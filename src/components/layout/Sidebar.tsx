@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils'
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useAuth } from '@/hooks/useAuth'
 
 interface Chapter {
   id: string
@@ -29,34 +30,66 @@ interface SidebarProps {
   className?: string
 }
 
-const mockChapters: Chapter[] = [
-  { id: '1', title: '第一章：线性代数基础', status: 'completed', progress: 100 },
-  { id: '2', title: '第二章：向量空间', status: 'in-progress', progress: 65 },
-  { id: '3', title: '第三章：矩阵运算', status: 'in-progress', progress: 30 },
-  { id: '4', title: '第四章：特征值与特征向量', status: 'locked', progress: 0 },
-  { id: '5', title: '第五章：线性变换', status: 'locked', progress: 0 },
-]
-
 export function Sidebar({ className }: SidebarProps) {
   const [isDragOver, setIsDragOver] = useState(false)
   const pathname = usePathname()
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [username, setUsername] = useState('')
-  const [userLevel, setUserLevel] = useState('1')
-  const overallProgress = Math.round(
-    mockChapters.reduce((acc, ch) => acc + ch.progress, 0) / mockChapters.length
-  )
+  const [chapters, setChapters] = useState<Chapter[]>([])
+  const [isLoadingChapters, setIsLoadingChapters] = useState(true)
 
-  // 检查用户登录状态
+  // 使用 useAuth hook
+  const { user, isAuthenticated, logout } = useAuth()
+
+  // 加载真实章节数据
   useEffect(() => {
-    const token = localStorage.getItem('token')
-    const storedUsername = localStorage.getItem('username')
-    const storedLevel = localStorage.getItem('cognitive_level')
+    const loadChapters = async () => {
+      if (!isAuthenticated || !user.id) {
+        setChapters([])
+        setIsLoadingChapters(false)
+        return
+      }
 
-    setIsLoggedIn(!!token)
-    setUsername(storedUsername || '')
-    setUserLevel(storedLevel || '1')
-  }, [])
+      try {
+        const response = await fetch(
+          `http://localhost:8000/api/users/${user.id}/progress`,
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              ...(user.token && { 'Authorization': `Bearer ${user.token}` })
+            }
+          }
+        )
+
+        if (response.ok) {
+          const progressData = await response.json()
+
+          // 转换为 Chapter 格式
+          const chapterList: Chapter[] = progressData.map((p: any) => ({
+            id: p.chapter_number.toString(),
+            title: p.chapter_title || `第${p.chapter_number}章`,
+            status: p.status as 'completed' | 'in-progress' | 'locked',
+            progress: Math.round(p.completion_percentage)
+          }))
+
+          setChapters(chapterList)
+        } else {
+          // 如果 API 失败，使用空数组
+          setChapters([])
+        }
+      } catch (error) {
+        console.error('加载章节失败:', error)
+        setChapters([])
+      } finally {
+        setIsLoadingChapters(false)
+      }
+    }
+
+    loadChapters()
+  }, [user.id, isAuthenticated, user.token])
+
+  // 计算总体进度
+  const overallProgress = chapters.length > 0
+    ? Math.round(chapters.reduce((acc, ch) => acc + ch.progress, 0) / chapters.length)
+    : 0
 
   const navItems = [
     { href: '/', icon: Home, label: '首页' },
@@ -65,11 +98,7 @@ export function Sidebar({ className }: SidebarProps) {
   ]
 
   const handleLogout = () => {
-    localStorage.removeItem('token')
-    localStorage.removeItem('user_id')
-    localStorage.removeItem('user_email')
-    localStorage.removeItem('username')
-    localStorage.removeItem('cognitive_level')
+    logout()
     window.location.href = '/'
   }
 
@@ -122,15 +151,17 @@ export function Sidebar({ className }: SidebarProps) {
 
           {/* 用户状态 */}
           <div className="mt-4">
-            {isLoggedIn ? (
+            {isAuthenticated && user ? (
               <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center text-xs font-medium">
-                    {username?.[0]?.toUpperCase() || 'U'}
+                    {user.username?.[0]?.toUpperCase() || 'U'}
                   </div>
                   <div>
-                    <p className="text-sm font-medium">{username || '用户'}</p>
-                    <p className="text-xs text-gray-500">L{userLevel}</p>
+                    <p className="text-sm font-medium">{user.username || '用户'}</p>
+                    <p className="text-xs text-gray-500">
+                      L{user.cognitiveLevel || 1}
+                    </p>
                   </div>
                 </div>
                 <button
@@ -259,37 +290,49 @@ export function Sidebar({ className }: SidebarProps) {
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-medium text-gray-500">章节目录</h2>
           <span className="text-xs text-gray-500">
-            {mockChapters.filter(c => c.status !== 'locked').length}/{mockChapters.length}
+            {chapters.filter(c => c.status !== 'locked').length}/{chapters.length || 0}
           </span>
         </div>
 
         <nav className="space-y-1">
-          {mockChapters.map((chapter, index) => (
-            <motion.div
-              key={chapter.id}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.2, delay: index * 0.05 }}
-            >
-              <button
-                className={cn(
-                  "w-full flex items-center justify-between p-3 rounded-xl transition-all duration-200",
-                  "border border-transparent hover:border-gray-200 hover:shadow-sm",
-                  chapter.status === 'in-progress' && "border-gray-200 bg-gray-50/50",
-                  chapter.status === 'locked' && "opacity-50 cursor-not-allowed"
-                )}
-                disabled={chapter.status === 'locked'}
+          {isLoadingChapters ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-black"></div>
+            </div>
+          ) : chapters.length === 0 ? (
+            <div className="text-center py-8">
+              <p className="text-sm text-gray-500">
+                {isAuthenticated ? '暂无学习记录' : '登录后查看学习进度'}
+              </p>
+            </div>
+          ) : (
+            chapters.map((chapter, index) => (
+              <motion.div
+                key={chapter.id}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.2, delay: index * 0.05 }}
               >
-                <div className="flex items-center space-x-3">
-                  <ChapterIcon status={chapter.status} />
-                  <span className="text-sm text-left">{chapter.title}</span>
-                </div>
-                {chapter.status !== 'locked' && (
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
-                )}
-              </button>
-            </motion.div>
-          ))}
+                <button
+                  className={cn(
+                    "w-full flex items-center justify-between p-3 rounded-xl transition-all duration-200",
+                    "border border-transparent hover:border-gray-200 hover:shadow-sm",
+                    chapter.status === 'in-progress' && "border-gray-200 bg-gray-50/50",
+                    chapter.status === 'locked' && "opacity-50 cursor-not-allowed"
+                  )}
+                  disabled={chapter.status === 'locked'}
+                >
+                  <div className="flex items-center space-x-3">
+                    <ChapterIcon status={chapter.status} />
+                    <span className="text-sm text-left">{chapter.title}</span>
+                  </div>
+                  {chapter.status !== 'locked' && (
+                    <ChevronRight className="w-4 h-4 text-gray-400" />
+                  )}
+                </button>
+              </motion.div>
+            ))
+          )}
         </nav>
       </div>
     </aside>
