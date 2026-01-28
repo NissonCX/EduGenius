@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * CompetencyRadar - 能力雷达图组件
+ * CompetencyRadar - 学习能力雷达图组件
  *
  * 展示学生的六维能力评估：
  * - 理解力 (Comprehension)
@@ -47,7 +47,6 @@ interface CompetencyRadarProps {
     application?: number
     stability?: number
   }
-  studentLevel?: number
   className?: string
 }
 
@@ -63,7 +62,6 @@ const DEFAULT_DATA: CompetencyData[] = [
 
 export function CompetencyRadar({
   data: propData,
-  studentLevel = 3,
   className
 }: CompetencyRadarProps) {
   const [chartData, setChartData] = useState<CompetencyData[]>(DEFAULT_DATA)
@@ -91,27 +89,16 @@ export function CompetencyRadar({
     }
 
     fetchCompetencyData()
-  }, [propData, studentLevel])
+  }, [propData])
 
   // 计算平均分
   const averageScore = Math.round(
     chartData.reduce((sum, item) => sum + item.value, 0) / chartData.length
   )
 
-  // 根据等级确定颜色
-  const getColorByLevel = (level: number) => {
-    const colors = {
-      1: 'rgba(59, 130, 246, 0.4)',  // Blue - L1
-      2: 'rgba(16, 185, 129, 0.4)',  // Green - L2
-      3: 'rgba(139, 92, 246, 0.4)',  // Purple - L3
-      4: 'rgba(249, 115, 22, 0.4)',  // Orange - L4
-      5: 'rgba(239, 68, 68, 0.4)'    // Red - L5
-    }
-    return colors[level as keyof typeof colors] || colors[3]
-  }
-
-  const radarColor = getColorByLevel(studentLevel)
-  const strokeColor = radarColor.replace('0.4', '1')
+  // 现代配色方案（使用紫色渐变）
+  const radarColor = 'rgba(99, 102, 241, 0.25)'
+  const strokeColor = 'rgba(99, 102, 241, 1)'
 
   return (
     <div className={className}>
@@ -119,9 +106,9 @@ export function CompetencyRadar({
       <div className="mb-6">
         <div className="flex items-end justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-black">能力雷达</h3>
+            <h3 className="text-lg font-semibold text-black">学习能力分析</h3>
             <p className="text-xs text-gray-500 mt-1">
-              当前等级：L{studentLevel}
+              基于答题记录评估
             </p>
           </div>
           <div className="text-right">
@@ -134,7 +121,7 @@ export function CompetencyRadar({
       {/* 雷达图 */}
       {isLoading ? (
         <div className="w-full h-64 flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
         </div>
       ) : (
         <ResponsiveContainer width="100%" height={280}>
@@ -184,7 +171,7 @@ export function CompetencyRadar({
             </div>
             <div
               className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden"
-            style={{ flexShrink: 1 }}
+              style={{ flexShrink: 1 }}
             >
               <div
                 className="h-full rounded-full transition-all duration-500"

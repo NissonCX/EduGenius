@@ -38,17 +38,18 @@ export function StudyChat({
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
   // 导师风格（可临时调整，不保存到数据库）
-  const [currentStyle, setCurrentStyle] = useState<number | null>(null)
+  // 初始化为用户偏好的风格，如果没有则使用默认值3
+  const [currentStyle, setCurrentStyle] = useState<number>(user?.teachingStyle || 3)
   const [isLoadingHistory, setIsLoadingHistory] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  // 当用户数据加载完成后，设置导师风格
+  // 当用户数据加载完成后，更新导师风格
   useEffect(() => {
-    if (user?.teachingStyle) {
+    if (user?.teachingStyle && user.teachingStyle !== currentStyle) {
       setCurrentStyle(user.teachingStyle)
     }
-  }, [user?.teachingStyle])
+  }, [user?.teachingStyle, currentStyle])
 
   // 自动滚动到底部
   const scrollToBottom = () => {
@@ -143,10 +144,6 @@ export function StudyChat({
 
           setMessages(historyMessages)
 
-          // 更新用户等级
-          if (historyData.user_level) {
-            setCurrentStrictness(historyData.user_level)
-          }
         } else {
           // API 失败，显示默认欢迎消息
           setMessages([{
@@ -315,7 +312,7 @@ export function StudyChat({
           <div>
             <h2 className="text-lg font-semibold text-black">{chapterTitle}</h2>
             <p className="text-sm text-gray-500 mt-1">
-              当前风格：<span className="font-medium">{currentStyle ? `L${currentStyle}` : '加载中...'}</span>
+              当前风格：<span className="font-medium">L{currentStyle}</span>
             </p>
           </div>
           <div className="text-right">

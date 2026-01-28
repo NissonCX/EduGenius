@@ -157,7 +157,6 @@ export default function DashboardPage() {
             >
               <CompetencyRadar
                 data={competencyData}
-                studentLevel={teachingStyle}
               />
             </motion.div>
 
@@ -187,7 +186,7 @@ export default function DashboardPage() {
           transition={{ duration: 0.3, delay: 0.2 }}
         >
           <h2 className="text-xl font-semibold mb-6">学习统计</h2>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {[
               {
                 label: '完成章节',
@@ -207,12 +206,6 @@ export default function DashboardPage() {
                 label: '学习文档',
                 value: userStats ? `${userStats.total_documents_studied || 0}` : '-',
                 change: '个文档',
-                trend: 'up' as const
-              },
-              {
-                label: '认知等级',
-                value: `L${user?.teachingStyle || 3}`,
-                change: '当前等级',
                 trend: 'up' as const
               }
             ].map((stat, index) => (
