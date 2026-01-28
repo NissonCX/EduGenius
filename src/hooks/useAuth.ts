@@ -1,12 +1,14 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 
 interface User {
   id: number | null
   email: string | null
   username: string | null
   cognitiveLevel: number | null
+  token?: string | null
 }
 
 interface AuthState {
@@ -20,7 +22,8 @@ const INITIAL_USER: User = {
   id: null,
   email: null,
   username: null,
-  cognitiveLevel: null
+  cognitiveLevel: null,
+  token: null
 }
 
 /**
@@ -56,7 +59,8 @@ export function useAuth() {
             id: userId ? parseInt(userId, 10) : null,
             email,
             username,
-            cognitiveLevel: cognitiveLevel ? parseInt(cognitiveLevel, 10) : null
+            cognitiveLevel: cognitiveLevel ? parseInt(cognitiveLevel, 10) : null,
+            token: token
           },
           token,
           isAuthenticated,
@@ -102,7 +106,7 @@ export function useAuth() {
       localStorage.setItem('cognitive_level', cognitiveLevel.toString())
 
       setAuthState({
-        user: { id: userId, email, username, cognitiveLevel },
+        user: { id: userId, email, username, cognitiveLevel, token },
         token,
         isAuthenticated: true,
         isLoading: false

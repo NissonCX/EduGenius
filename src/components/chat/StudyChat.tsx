@@ -14,6 +14,7 @@ import { ChatMessage } from './ChatMessage'
 import { TypingIndicator } from './TypingIndicator'
 import { StrictnessMenu } from './StrictnessMenu'
 import { useAuth } from '@/hooks/useAuth'
+import { safeFetch, handleApiError, getFriendlyErrorMessage } from '@/lib/errors'
 
 interface StudyChatProps {
   chapterId?: string
@@ -116,8 +117,8 @@ export function StudyChat({
       if (!user.id) return
 
       try {
-        // 获取历史对话，使用真实用户 ID
-        const historyResponse = await fetch(
+        // 获取历史对话，使用真实用户 ID（使用 safeFetch）
+        const historyResponse = await safeFetch(
           `http://localhost:8000/api/users/${user.id}/history?chapter_number=${chapterId}`,
           {
             headers: getAuthHeaders()
@@ -161,7 +162,8 @@ export function StudyChat({
           }])
         }
       } catch (error) {
-        console.error('加载历史失败:', error)
+        const apiError = handleApiError(error)
+        console.error('加载历史失败:', apiError)
         // 显示默认欢迎消息
         setMessages([{
           id: 'welcome',
@@ -187,7 +189,7 @@ export function StudyChat({
     setStreamingContent('')
 
     try {
-      const response = await fetch('http://localhost:8000/api/teaching/chat', {
+      const response = await safeFetch('http://localhost:8000/api/teaching/chat', {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -198,8 +200,6 @@ export function StudyChat({
           user_id: user.id // 传递真实用户 ID
         })
       })
-
-      if (!response.ok) throw new Error('Failed to connect to chat API')
 
       const reader = response.body?.getReader()
       const decoder = new TextDecoder()
@@ -253,12 +253,16 @@ export function StudyChat({
       }
 
     } catch (error) {
-      console.error('Streaming error:', error)
-      // 降级处理：使用模拟数据
+      const apiError = handleApiError(error)
+      const friendlyMessage = getFriendlyErrorMessage(apiError)
+
+      console.error('Streaming error:', apiError)
+
+      // 降级处理：显示友好的错误提示
       const fallbackMessage: Message = {
         id: Date.now().toString(),
         role: 'assistant',
-        content: `抱歉，连接遇到了问题。让我为你讲解一下 **线性代数基础**。\n\n线性代数是研究向量空间和线性变换的数学分支。它在计算机科学、物理学、工程学等领域有广泛应用。\n\n### 核心概念\n\n1. **向量** - 具有大小和方向的量\n2. **矩阵** - 数字的矩形阵列\n3. **线性变换** - 保持向量加法和标量乘法的变换`,
+        content: `⚠️ ${friendlyMessage}\n\n请稍后重试，或检查网络连接。`,
         timestamp: new Date()
       }
       setMessages(prev => [...prev, fallbackMessage])
