@@ -9,9 +9,11 @@ import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { BookOpen, Loader2 } from 'lucide-react'
+import { useAuth } from '@/hooks/useAuth'
 
 export default function LoginPage() {
   const router = useRouter()
+  const { login } = useAuth()
   const [formData, setFormData] = useState({
     email: '',
     password: ''
@@ -34,12 +36,14 @@ export default function LoginPage() {
       if (response.ok) {
         const data = await response.json()
 
-        // 存储 token 和用户信息
-        localStorage.setItem('token', data.access_token)
-        localStorage.setItem('user_id', data.user_id.toString())
-        localStorage.setItem('user_email', data.email)
-        localStorage.setItem('username', data.username)
-        localStorage.setItem('teaching_style', data.teaching_style.toString())
+        // 使用 useAuth 的 login 方法更新状态
+        login(
+          data.access_token,
+          data.user_id,
+          data.email,
+          data.username,
+          data.teaching_style
+        )
 
         // 跳转到学习页面
         router.push('/study')

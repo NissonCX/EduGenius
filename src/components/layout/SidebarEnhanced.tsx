@@ -2,7 +2,7 @@
 
 /**
  * EnhancedSidebar - 增强侧边栏
- * 包含错题本图标（带微颤动效）和严厉程度调节滑块
+ * 包含错题本图标（带微颤动效）和导师风格调节
  */
 
 import { useState, useEffect } from 'react'
@@ -25,6 +25,7 @@ import {
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useAuth } from '@/hooks/useAuth'
 
 interface Chapter {
   id: string
@@ -37,7 +38,7 @@ interface SidebarEnhancedProps {
   className?: string
   onErrorCountChange?: (count: number) => void
   onErrorTrigger?: () => void // 外部触发错题动画
-  onStrictnessChange?: (level: number) => void // 严厉程度回调
+  onStrictnessChange?: (level: number) => void // 风格调整回调
 }
 
 const mockChapters: Chapter[] = [
@@ -53,11 +54,20 @@ export function SidebarEnhanced({
   onErrorTrigger,
   onStrictnessChange
 }: SidebarEnhancedProps) {
+  const { user } = useAuth()
   const [isDragOver, setIsDragOver] = useState(false)
   const [errorCount, setErrorCount] = useState(0)
   const [shakeError, setShakeError] = useState(false)
-  const [strictness, setStrictness] = useState(3) // 1-5 严厉程度
+  // 使用用户的导师风格偏好，如果没有则使用默认值3
+  const [strictness, setStrictness] = useState(user?.teachingStyle || 3)
   const pathname = usePathname()
+
+  // 当用户的 teachingStyle 改变时，更新 strictness
+  useEffect(() => {
+    if (user?.teachingStyle) {
+      setStrictness(user.teachingStyle)
+    }
+  }, [user?.teachingStyle])
 
   const overallProgress = Math.round(
     mockChapters.reduce((acc, ch) => acc + ch.progress, 0) / mockChapters.length
@@ -88,14 +98,14 @@ export function SidebarEnhanced({
     }
   }, [onErrorTrigger])
 
-  // 严厉程度标签
-  const getStrictnessLabel = (level: number) => {
+  // 导师风格标签
+  const getStyleLabel = (level: number) => {
     const labels = {
-      1: '温柔引导',
-      2: '耐心细致',
-      3: '标准教学',
-      4: '严格要求',
-      5: '严格督促'
+      1: '温柔',
+      2: '耐心',
+      3: '标准',
+      4: '严格',
+      5: '严厉'
     }
     return labels[level as keyof typeof labels] || labels[3]
   }
@@ -195,7 +205,7 @@ export function SidebarEnhanced({
         </nav>
       </div>
 
-      {/* 严厉程度调节 */}
+      {/* 导师风格调节 */}
       <div className="px-4 py-3">
         <motion.div
           className="p-4 bg-gray-50 rounded-xl border border-gray-200"
@@ -207,7 +217,7 @@ export function SidebarEnhanced({
             <span className="text-sm font-medium text-gray-700">导师风格</span>
           </div>
 
-          {/* 严厉程度标签 */}
+          {/* 风格标签 */}
           <motion.div
             key={strictness}
             initial={{ scale: 1.1 }}
@@ -215,7 +225,7 @@ export function SidebarEnhanced({
             className="mb-3"
           >
             <span className={cn("text-sm font-semibold", getStrictnessColor(strictness))}>
-              {getStrictnessLabel(strictness)}
+              {getStyleLabel(strictness)}
             </span>
             <span className="text-xs text-gray-500 ml-2">L{strictness}</span>
           </motion.div>
@@ -243,7 +253,7 @@ export function SidebarEnhanced({
           </div>
 
           <p className="text-xs text-gray-500 mt-2">
-            {strictness <= 2 ? '多鼓励，少压力' : strictness === 3 ? '平衡教学' : '高标准，严要求'}
+            {strictness <= 2 ? '耐心细致，循序渐进' : strictness === 3 ? '平衡严谨，注重应用' : '高标准，挑战思维'}
           </p>
         </motion.div>
       </div>
