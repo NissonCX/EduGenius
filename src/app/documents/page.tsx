@@ -9,7 +9,7 @@ import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { FileText, Upload, Trash2, BookOpen, ArrowRight } from 'lucide-react'
 import Link from 'next/link'
-import { useAuth } from '@/hooks/useAuth'
+import { useAuth } from '@/contexts/AuthContext'
 
 export default function DocumentsPage() {
   const { user, isAuthenticated, getAuthHeaders } = useAuth()

@@ -5,7 +5,7 @@ import { motion } from 'framer-motion'
 import { CompetencyRadar } from '@/components/charts/CompetencyRadar'
 import { KnowledgeConstellation } from '@/components/charts/KnowledgeConstellation'
 import { fetchCompetencyData, fetchKnowledgeGraph } from '@/lib/api'
-import { useAuth } from '@/hooks/useAuth'
+import { useAuth } from '@/contexts/AuthContext'
 
 export default function DashboardPage() {
   const { user, isAuthenticated, token } = useAuth()

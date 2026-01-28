@@ -13,7 +13,7 @@ import { Message } from '@/types/chat'
 import { ChatMessage } from './ChatMessage'
 import { TypingIndicator } from './TypingIndicator'
 import { StrictnessMenu } from './StrictnessMenu'
-import { useAuth } from '@/hooks/useAuth'
+import { useAuth } from '@/contexts/AuthContext'
 import { safeFetch, handleApiError, getFriendlyErrorMessage } from '@/lib/errors'
 
 interface StudyChatProps {

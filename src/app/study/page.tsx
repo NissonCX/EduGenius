@@ -8,7 +8,7 @@
 import { useState, useEffect } from 'react'
 import { StudyChat } from '@/components/chat/StudyChat'
 import { StudySidebar } from '@/components/chat/StudySidebar'
-import { useAuth } from '@/hooks/useAuth'
+import { useAuth } from '@/contexts/AuthContext'
 
 export default function StudyPage() {
   const { user } = useAuth()

@@ -11,7 +11,7 @@ import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Upload, FileText, CheckCircle2, X, Loader2, BookOpen } from 'lucide-react'
-import { useAuth } from '@/hooks/useAuth'
+import { useAuth } from '@/contexts/AuthContext'
 
 export default function DocumentUploadPage() {
   const router = useRouter()

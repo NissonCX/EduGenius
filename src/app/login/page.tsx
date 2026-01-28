@@ -9,7 +9,7 @@ import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { BookOpen, Loader2 } from 'lucide-react'
-import { useAuth } from '@/hooks/useAuth'
+import { useAuth } from '@/contexts/AuthContext'
 
 export default function LoginPage() {
   const router = useRouter()
