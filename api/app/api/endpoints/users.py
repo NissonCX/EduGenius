@@ -370,7 +370,7 @@ async def register_user(
     await db.refresh(new_user)
 
     # 生成 token 并返回
-    token = create_token_for_user(new_user)
+    token = create_token_for_user(new_user.id, new_user.email)
 
     return {
         "access_token": token,
