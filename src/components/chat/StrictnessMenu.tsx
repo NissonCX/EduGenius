@@ -38,7 +38,8 @@ export function StrictnessMenu({ currentLevel, onChange }: StrictnessMenuProps) 
     { value: 5, label: '严厉', color: 'text-red-600' }
   ]
 
-  const currentLevelData = levels.find(l => l.value === currentLevel) || levels[2]
+  // 当 currentLevel 为 null 时，不设置默认选中项，而是等待加载
+  const currentLevelData = currentLevel !== null ? levels.find(l => l.value === currentLevel) : null
 
   return (
     <div ref={menuRef} className="relative">
