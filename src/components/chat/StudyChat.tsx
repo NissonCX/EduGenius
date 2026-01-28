@@ -42,6 +42,13 @@ export function StudyChat({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
+  // 当用户的 cognitiveLevel 加载完成后，更新当前等级显示
+  useEffect(() => {
+    if (user?.cognitiveLevel && !studentLevel) {
+      setCurrentStrictness(user.cognitiveLevel)
+    }
+  }, [user?.cognitiveLevel, studentLevel])
+
   // 自动滚动到底部
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -194,6 +201,7 @@ export function StudyChat({
       if (!reader) throw new Error('No reader available')
 
       let buffer = ''
+      let fullContent = '' // 本地累积完整内容
 
       while (true) {
         const { done, value } = await reader.read()
@@ -211,7 +219,8 @@ export function StudyChat({
             try {
               const parsed = JSON.parse(data)
               if (parsed.content) {
-                setStreamingContent(prev => prev + parsed.content)
+                fullContent += parsed.content
+                setStreamingContent(fullContent)
               }
             } catch (e) {
               // 忽略解析错误
@@ -221,18 +230,18 @@ export function StudyChat({
       }
 
       // 流式结束，保存完整消息
-      if (streamingContent) {
+      if (fullContent) {
         const assistantMessage: Message = {
           id: Date.now().toString(),
           role: 'assistant',
-          content: streamingContent,
+          content: fullContent,
           timestamp: new Date()
         }
         setMessages(prev => [...prev, assistantMessage])
 
         // 保存对话到数据库
         try {
-          await saveConversationToDB(userMessage, streamingContent)
+          await saveConversationToDB(userMessage, fullContent)
         } catch (saveError) {
           console.error('保存对话失败:', saveError)
           // 不影响用户体验，静默失败
