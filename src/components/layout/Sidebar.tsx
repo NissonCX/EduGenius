@@ -159,14 +159,11 @@ export function Sidebar({ className }: SidebarProps) {
                   </div>
                   <div>
                     <p className="text-sm font-medium">{user.username || '用户'}</p>
-                    <p className="text-xs text-gray-500">
-                      L{user.cognitiveLevel || 1}
-                    </p>
                   </div>
                 </div>
                 <button
                   onClick={handleLogout}
-                  className="text-xs text-gray-600 hover:text-black transition-colors"
+                  className="text-xs text-gray-600 hover:text-black transition-colors px-3 py-1.5 rounded-lg hover:bg-gray-200"
                 >
                   退出
                 </button>

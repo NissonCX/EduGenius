@@ -38,18 +38,19 @@ export function StudyChat({
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
   // 导师风格（可临时调整，不保存到数据库）
-  // 初始化为用户偏好的风格，如果没有则使用默认值3
-  const [currentStyle, setCurrentStyle] = useState<number>(user?.teachingStyle || 3)
+  // 直接从 user 对象获取，如果用户未登录则使用默认值3
+  const userStyle = user?.teachingStyle || 3
+  const [currentStyle, setCurrentStyle] = useState<number>(userStyle)
   const [isLoadingHistory, setIsLoadingHistory] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  // 当用户数据加载完成后，更新导师风格
+  // 当用户的 teachingStyle 改变时，同步更新 currentStyle
   useEffect(() => {
-    if (user?.teachingStyle && user.teachingStyle !== currentStyle) {
+    if (user?.teachingStyle) {
       setCurrentStyle(user.teachingStyle)
     }
-  }, [user?.teachingStyle, currentStyle])
+  }, [user?.teachingStyle])
 
   // 自动滚动到底部
   const scrollToBottom = () => {
