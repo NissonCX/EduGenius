@@ -1,13 +1,13 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 
 interface User {
   id: number | null
   email: string | null
   username: string | null
-  teachingStyle: number | null  // 导师风格偏好 (1-5)
+  teachingStyle: number | null
   token?: string | null
 }
 
@@ -18,6 +18,16 @@ interface AuthState {
   isLoading: boolean
 }
 
+interface AuthContextType extends AuthState {
+  login: (token: string, userId: number, email: string, username: string, teachingStyle: number) => void
+  logout: () => void
+  updateUser: (updates: Partial<User>) => void
+  getAuthHeaders: (contentType?: boolean) => HeadersInit
+  checkAuth: () => boolean
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined)
+
 const INITIAL_USER: User = {
   id: null,
   email: null,
@@ -26,15 +36,17 @@ const INITIAL_USER: User = {
   token: null
 }
 
+interface AuthProviderProps {
+  children: ReactNode
+}
+
 /**
- * useAuth - 认证管理 Hook
+ * AuthProvider - 全局认证状态管理
  *
- * 提供统一的认证状态管理和操作方法
- * - 从 localStorage 读取用户信息
- * - 提供 login、logout、isAuthenticated 等方法
- * - 自动同步 localStorage 变化
+ * 使用 React Context 确保所有组件共享同一份认证状态
+ * 解决登录后其他组件（如 Sidebar）不同步更新的问题
  */
-export function useAuth() {
+export function AuthProvider({ children }: AuthProviderProps) {
   const [authState, setAuthState] = useState<AuthState>({
     user: INITIAL_USER,
     token: null,
@@ -42,7 +54,9 @@ export function useAuth() {
     isLoading: true
   })
 
-  // 从 localStorage 加载用户信息
+  const router = useRouter()
+
+  // 从 localStorage 加载用户信息（组件挂载时执行一次）
   useEffect(() => {
     const loadAuth = () => {
       try {
@@ -132,10 +146,13 @@ export function useAuth() {
         isAuthenticated: false,
         isLoading: false
       })
+
+      // 登出后跳转到首页
+      router.push('/')
     } catch (error) {
       console.error('登出失败:', error)
     }
-  }, [])
+  }, [router])
 
   // 更新用户信息
   const updateUser = useCallback((updates: Partial<User>) => {
@@ -161,9 +178,11 @@ export function useAuth() {
   }, [])
 
   // 获取认证请求头
-  const getAuthHeaders = useCallback(() => {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json'
+  const getAuthHeaders = useCallback((contentType: boolean = true) => {
+    const headers: Record<string, string> = {}
+
+    if (contentType) {
+      headers['Content-Type'] = 'application/json'
     }
 
     if (authState.token) {
@@ -178,17 +197,33 @@ export function useAuth() {
     return authState.isAuthenticated && authState.user.id !== null
   }, [authState.isAuthenticated, authState.user.id])
 
-  return {
-    // 状态
+  const value: AuthContextType = {
     ...authState,
-
-    // 方法
     login,
     logout,
     updateUser,
     getAuthHeaders,
     checkAuth
   }
+
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  )
+}
+
+/**
+ * useAuth - 认证管理 Hook
+ *
+ * 使用 Context 共享全局认证状态，确保登录后所有组件同步更新
+ */
+export function useAuth() {
+  const context = useContext(AuthContext)
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider')
+  }
+  return context
 }
 
 /**

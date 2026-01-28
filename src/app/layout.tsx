@@ -4,6 +4,7 @@ import '@/styles/globals.css'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ToastProvider } from '@/components/Toast'
+import { AuthProvider } from '@/contexts/AuthContext'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -24,16 +25,18 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" className={inter.variable}>
       <body className="antialiased">
-        <ToastProvider>
-          <ErrorBoundary>
-            <div className="flex h-screen overflow-hidden">
-              <Sidebar />
-              <main className="flex-1 overflow-y-auto">
-                {children}
-              </main>
-            </div>
-          </ErrorBoundary>
-        </ToastProvider>
+        <AuthProvider>
+          <ToastProvider>
+            <ErrorBoundary>
+              <div className="flex h-screen overflow-hidden">
+                <Sidebar />
+                <main className="flex-1 overflow-y-auto">
+                  {children}
+                </main>
+              </div>
+            </ErrorBoundary>
+          </ToastProvider>
+        </AuthProvider>
       </body>
     </html>
   )
