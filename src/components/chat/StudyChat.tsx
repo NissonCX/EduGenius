@@ -312,9 +312,6 @@ export function StudyChat({
         <div className="flex items-center justify-between mb-3">
           <div>
             <h2 className="text-lg font-semibold text-black">{chapterTitle}</h2>
-            <p className="text-sm text-gray-500 mt-1">
-              当前风格：<span className="font-medium">L{currentStyle}</span>
-            </p>
           </div>
           <div className="text-right">
             <p className="text-sm text-gray-500">学习进度</p>
@@ -403,6 +400,8 @@ export function StudyChat({
                 currentLevel={currentStyle}
                 onChange={(level) => {
                   setCurrentStyle(level)
+                  // 通知父组件（study/page.tsx），以便更新右侧边栏
+                  onStrictnessChange?.(level)
                 }}
               />
             </div>
