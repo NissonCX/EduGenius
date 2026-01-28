@@ -42,23 +42,6 @@ export function StudyChat({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  // 如果用户未登录，显示提示
-  if (!isAuthenticated || !user.id) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center">
-          <p className="text-gray-500 mb-4">请先登录以开始学习</p>
-          <a
-            href="/login"
-            className="px-6 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors"
-          >
-            前往登录
-          </a>
-        </div>
-      </div>
-    )
-  }
-
   // 自动滚动到底部
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -114,7 +97,11 @@ export function StudyChat({
   // 加载历史对话和用户状态
   useEffect(() => {
     const loadHistory = async () => {
-      if (!user.id) return
+      // 不要在这里使用 early return，确保 Hooks 顺序一致
+      if (!user.id) {
+        setIsLoadingHistory(false)
+        return
+      }
 
       try {
         // 获取历史对话，使用真实用户 ID（使用 safeFetch）
@@ -295,8 +282,27 @@ export function StudyChat({
     }
   }
 
+  }
+
   return (
     <div className={`flex flex-col h-full bg-white ${className}`}>
+      {/* 如果用户未登录，显示提示 */}
+      {!isAuthenticated || !user.id ? (
+        <div className="flex items-center justify-center h-full">
+          <div className="text-center">
+            <p className="text-gray-500 mb-4">请先登录以开始学习</p>
+            <a
+              href="/login"
+              className="px-6 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors"
+            >
+              前往登录
+            </a>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* 顶部进度条 */}
+          <div className="border-b border-gray-200 px-6 py-4">
       {/* 顶部进度条 */}
       <div className="border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between mb-3">
@@ -418,6 +424,8 @@ export function StudyChat({
           按 Enter 发送，Shift+Enter 换行 · AI 导师会根据你的等级调整教学风格
         </p>
       </div>
+        </>
+      )}
     </div>
   )
 }
