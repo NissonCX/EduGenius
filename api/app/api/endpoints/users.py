@@ -169,7 +169,7 @@ class LoginResponse(BaseModel):
     user_id: int
     email: str
     username: str
-    cognitive_level: int
+    teaching_style: int  # 导师风格偏好 (1-5)
 
 
 # ============ 请求/响应模型 ============
@@ -179,7 +179,7 @@ class UserRegister(BaseModel):
     email: EmailStr
     username: str
     password: str  # 前端应该哈希，但这里先接受
-    cognitive_level: Optional[int] = 1  # L1-L5，默认 L1
+    preferred_teaching_style: Optional[int] = 3  # 1-5，默认3（标准）
 
 
 class UserResponse(BaseModel):
@@ -317,17 +317,17 @@ async def update_progress_activity(
 
 # ============ 端点实现 ============
 
-@router.post("/register", response_model=UserResponse)
+@router.post("/register")
 async def register_user(
     user_data: UserRegister,
     db: AsyncSession = Depends(get_db)
 ):
     """
-    用户注册（带能力测评）
+    用户注册（简化版）
 
-    - 支持直接选择 L1-L5 等级
+    - 直接选择导师风格偏好（1-5）
     - 创建用户记录
-    - 初始化学习统计数据
+    - 返回 token 自动登录
     """
     # 检查邮箱是否已存在
     from sqlalchemy import select
@@ -361,15 +361,25 @@ async def register_user(
     new_user = UserModel(
         email=user_data.email,
         username=user_data.username,
-        password=hashed_password,  # 存储哈希密码
-        cognitive_level=user_data.cognitive_level
+        password=hashed_password,
+        cognitive_level=user_data.preferred_teaching_style
     )
 
     db.add(new_user)
     await db.commit()
     await db.refresh(new_user)
 
-    return new_user
+    # 生成 token 并返回
+    token = create_token_for_user(new_user)
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user_id": new_user.id,
+        "email": new_user.email,
+        "username": new_user.username,
+        "teaching_style": new_user.cognitive_level
+    }
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -414,7 +424,7 @@ async def login(
         user_id=user.id,
         email=user.email,
         username=user.username,
-        cognitive_level=user.cognitive_level
+        teaching_style=user.cognitive_level
     )
 
 

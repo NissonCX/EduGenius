@@ -14,8 +14,8 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [userStats, setUserStats] = useState<any>(null)
 
-  // 获取用户当前等级（从后端获取，不可修改）
-  const studentLevel = user?.cognitiveLevel || 1
+  // 获取用户当前风格（从后端获取，不可修改）
+  const teachingStyle = user?.teachingStyle || 3
 
   useEffect(() => {
     const loadData = async () => {
@@ -114,18 +114,21 @@ export default function DashboardPage() {
       {/* Current Level Display */}
       <section className="container-x py-6">
         <div className="flex items-center gap-4">
-          <span className="text-sm font-medium text-gray-700">当前认知等级：</span>
+          <span className="text-sm font-medium text-gray-700">你的导师风格：</span>
           <div className="px-6 py-2 bg-black text-white rounded-xl text-sm font-medium shadow-md">
-            L{studentLevel}
+            L{teachingStyle}
           </div>
           <span className="text-xs text-gray-500 ml-2">
-            {studentLevel === 1 && '初级 - 适合初学者'}
-            {studentLevel === 2 && '入门 - 掌握基础概念'}
-            {studentLevel === 3 && '进阶 - 理解核心原理'}
-            {studentLevel === 4 && '高级 - 能够综合应用'}
-            {studentLevel === 5 && '专家 - 深入专精'}
+            {teachingStyle === 1 && '温柔 - 耐心细致，用简单的例子和鼓励帮助你理解'}
+            {teachingStyle === 2 && '耐心 - 循序渐进，提供详细的讲解和指导'}
+            {teachingStyle === 3 && '标准 - 平衡严谨，既讲清原理又注重应用'}
+            {teachingStyle === 4 && '严格 - 注重细节，要求深入理解每一步推理'}
+            {teachingStyle === 5 && '严厉 - 挑战思维，培养独立解决问题的能力'}
           </span>
         </div>
+        <p className="text-xs text-gray-400 mt-2 ml-20">
+          💡 学习时可以临时调整风格，不会改变你的偏好设置
+        </p>
       </section>
 
       {/* Visualization Grid */}
@@ -154,7 +157,7 @@ export default function DashboardPage() {
             >
               <CompetencyRadar
                 data={competencyData}
-                studentLevel={studentLevel}
+                studentLevel={teachingStyle}
               />
             </motion.div>
 
@@ -208,7 +211,7 @@ export default function DashboardPage() {
               },
               {
                 label: '认知等级',
-                value: `L${user?.cognitiveLevel || 1}`,
+                value: `L${user?.teachingStyle || 3}`,
                 change: '当前等级',
                 trend: 'up' as const
               }

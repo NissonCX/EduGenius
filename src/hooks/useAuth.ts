@@ -7,7 +7,7 @@ interface User {
   id: number | null
   email: string | null
   username: string | null
-  cognitiveLevel: number | null
+  teachingStyle: number | null  // 导师风格偏好 (1-5)
   token?: string | null
 }
 
@@ -22,7 +22,7 @@ const INITIAL_USER: User = {
   id: null,
   email: null,
   username: null,
-  cognitiveLevel: null,
+  teachingStyle: null,
   token: null
 }
 
@@ -50,7 +50,7 @@ export function useAuth() {
         const userId = localStorage.getItem('user_id')
         const email = localStorage.getItem('user_email')
         const username = localStorage.getItem('username')
-        const cognitiveLevel = localStorage.getItem('cognitive_level')
+        const teachingStyle = localStorage.getItem('teaching_style')
 
         const isAuthenticated = !!token && !!userId
 
@@ -59,7 +59,7 @@ export function useAuth() {
             id: userId ? parseInt(userId, 10) : null,
             email,
             username,
-            cognitiveLevel: cognitiveLevel ? parseInt(cognitiveLevel, 10) : null,
+            teachingStyle: teachingStyle ? parseInt(teachingStyle, 10) : null,
             token: token
           },
           token,
@@ -96,17 +96,17 @@ export function useAuth() {
     userId: number,
     email: string,
     username: string,
-    cognitiveLevel: number
+    teachingStyle: number
   ) => {
     try {
       localStorage.setItem('token', token)
       localStorage.setItem('user_id', userId.toString())
       localStorage.setItem('user_email', email)
       localStorage.setItem('username', username)
-      localStorage.setItem('cognitive_level', cognitiveLevel.toString())
+      localStorage.setItem('teaching_style', teachingStyle.toString())
 
       setAuthState({
-        user: { id: userId, email, username, cognitiveLevel, token },
+        user: { id: userId, email, username, teachingStyle, token },
         token,
         isAuthenticated: true,
         isLoading: false
@@ -124,7 +124,7 @@ export function useAuth() {
       localStorage.removeItem('user_id')
       localStorage.removeItem('user_email')
       localStorage.removeItem('username')
-      localStorage.removeItem('cognitive_level')
+      localStorage.removeItem('teaching_style')
 
       setAuthState({
         user: INITIAL_USER,
@@ -146,8 +146,8 @@ export function useAuth() {
       if (newUser.id !== null) {
         localStorage.setItem('user_id', newUser.id.toString())
       }
-      if (newUser.cognitiveLevel !== null) {
-        localStorage.setItem('cognitive_level', newUser.cognitiveLevel.toString())
+      if (newUser.teachingStyle !== null) {
+        localStorage.setItem('teaching_style', newUser.teachingStyle.toString())
       }
       if (newUser.username !== null) {
         localStorage.setItem('username', newUser.username)

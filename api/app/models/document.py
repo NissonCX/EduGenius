@@ -10,7 +10,7 @@ Base = declarative_base()
 
 
 class User(Base):
-    """User model with L1-L5 cognitive level tracking."""
+    """User model with preferred teaching style (1-5)."""
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -18,8 +18,9 @@ class User(Base):
     username = Column(String(100), unique=True, index=True, nullable=False)
     password = Column(String(255), nullable=False)  # 哈希密码
 
-    # Cognitive level: L1 (Beginner) to L5 (Expert)
-    cognitive_level = Column(Integer, default=1, nullable=False)
+    # 导师风格偏好: 1=温柔, 2=耐心, 3=标准, 4=严格, 5=严厉
+    # 字段名保持 cognitive_level 以兼容现有数据库，但语义改为教学风格偏好
+    cognitive_level = Column(Integer, default=3, nullable=False)
 
     # Learning progress metrics
     total_documents_studied = Column(Integer, default=0)
@@ -31,7 +32,7 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     def __repr__(self):
-        return f"<User(id={self.id}, username='{self.username}', level=L{self.cognitive_level})>"
+        return f"<User(id={self.id}, username='{self.username}', style=L{self.cognitive_level})>"
 
 
 class Document(Base):

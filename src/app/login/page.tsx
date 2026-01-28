@@ -39,7 +39,7 @@ export default function LoginPage() {
         localStorage.setItem('user_id', data.user_id.toString())
         localStorage.setItem('user_email', data.email)
         localStorage.setItem('username', data.username)
-        localStorage.setItem('cognitive_level', data.cognitive_level.toString())
+        localStorage.setItem('teaching_style', data.teaching_style.toString())
 
         // 跳转到学习页面
         router.push('/study')

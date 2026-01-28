@@ -37,18 +37,18 @@ export function StudyChat({
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
-  // 初始化等级，等待用户数据加载完成
-  const [currentStrictness, setCurrentStrictness] = useState<number | null>(null)
+  // 导师风格（可临时调整，不保存到数据库）
+  const [currentStyle, setCurrentStyle] = useState<number | null>(null)
   const [isLoadingHistory, setIsLoadingHistory] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  // 当用户数据加载完成后，设置等级
+  // 当用户数据加载完成后，设置导师风格
   useEffect(() => {
-    if (user?.cognitiveLevel) {
-      setCurrentStrictness(studentLevel || user.cognitiveLevel)
+    if (user?.teachingStyle) {
+      setCurrentStyle(user.teachingStyle)
     }
-  }, [user?.cognitiveLevel, studentLevel])
+  }, [user?.teachingStyle])
 
   // 自动滚动到底部
   const scrollToBottom = () => {
@@ -190,7 +190,7 @@ export function StudyChat({
         body: JSON.stringify({
           message: userMessage,
           chapter_id: chapterId,
-          student_level: currentStrictness,
+          student_level: currentStyle,
           stream: true,
           user_id: user.id // 传递真实用户 ID
         })
@@ -315,7 +315,7 @@ export function StudyChat({
           <div>
             <h2 className="text-lg font-semibold text-black">{chapterTitle}</h2>
             <p className="text-sm text-gray-500 mt-1">
-              当前等级：<span className="font-medium">{currentStrictness ? `L${currentStrictness}` : '加载中...'}</span>
+              当前风格：<span className="font-medium">{currentStyle ? `L${currentStyle}` : '加载中...'}</span>
             </p>
           </div>
           <div className="text-right">
@@ -399,13 +399,12 @@ export function StudyChat({
               style={{ minHeight: '48px', maxHeight: '150px' }}
             />
 
-            {/* 严厉程度浮动菜单 */}
+            {/* 导师风格浮动菜单 */}
             <div className="absolute right-2 top-1/2 -translate-y-1/2">
               <StrictnessMenu
-                currentLevel={currentStrictness}
+                currentLevel={currentStyle}
                 onChange={(level) => {
-                  setCurrentStrictness(level)
-                  onStrictnessChange?.(level)
+                  setCurrentStyle(level)
                 }}
               />
             </div>
