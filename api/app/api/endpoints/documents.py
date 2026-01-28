@@ -35,10 +35,11 @@ DEFAULT_USER_EMAIL = "demo@edugenius.ai"
 DEFAULT_USERNAME = "demo_user"
 
 
-@router.post("/upload", response_model=DocumentUploadResponse)
+@router.post("/upload")
 async def upload_document(
     file: UploadFile = File(...),
-    user_email: str = DEFAULT_USER_EMAIL,
+    title: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -66,13 +67,6 @@ async def upload_document(
         # 检查是否已存在
         existing_document = await get_document_by_md5(db, md5_hash)
 
-        # 获取或创建用户
-        user, is_new_user = await get_or_create_user(
-            db,
-            email=user_email,
-            username=DEFAULT_USERNAME
-        )
-
         if existing_document:
             # 文档已存在 - 返回已有记录
             return DocumentUploadResponse(
@@ -94,8 +88,8 @@ async def upload_document(
         # 解析文档、切分、向量化
         result = await process_uploaded_document(
             file_path=tmp_file_path,
-            title=file.filename,
-            user_email=user_email
+            title=title or file.filename,
+            user_email=current_user.email
         )
 
         # 创建数据库记录
@@ -107,7 +101,7 @@ async def upload_document(
             md5_hash=md5_hash
         )
 
-        new_document = await create_document(db, document_data, user.id)
+        new_document = await create_document(db, document_data, current_user.id)
 
         # 创建 ChromaDB collection（以 MD5 命名）
         create_document_collection(md5_hash)
@@ -140,18 +134,18 @@ async def upload_document(
             status="completed",
             total_pages=result['stats'].get('total_pages', 0),
             total_chapters=1,  # 简化：暂时设为1章
-            title=file.filename
+            title=title or file.filename
         )
 
         # 创建初始进度记录
         await create_progress(
             db,
             ProgressCreate(
-                user_id=user.id,
+                user_id=current_user.id,
                 document_id=new_document.id,
                 chapter_number=1,
-                chapter_title=file.filename,
-                cognitive_level_assigned=user.cognitive_level
+                chapter_title=title or file.filename,
+                cognitive_level_assigned=current_user.cognitive_level
             )
         )
 

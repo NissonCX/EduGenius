@@ -30,22 +30,22 @@ export default function HomePage() {
           </p>
 
           <div className="flex items-center space-x-4">
-            <Link href="/study">
+            <Link href="/documents">
               <motion.button
                 className="px-6 py-3 bg-black text-white rounded-xl font-medium shadow-sm hover:shadow-md transition-all duration-200"
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
               >
-                开始学习
+                上传文档
               </motion.button>
             </Link>
-            <Link href="/dashboard">
+            <Link href="/study">
               <motion.button
                 className="px-6 py-3 border border-gray-200 rounded-xl font-medium hover:bg-gray-50/50 transition-all duration-200"
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
               >
-                了解更多
+                开始学习
               </motion.button>
             </Link>
           </div>

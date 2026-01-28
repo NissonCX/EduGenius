@@ -93,6 +93,7 @@ export function Sidebar({ className }: SidebarProps) {
 
   const navItems = [
     { href: '/', icon: Home, label: '首页' },
+    { href: '/documents', icon: FileText, label: '文档管理' },
     { href: '/study', icon: MessageSquare, label: '学习对话' },
     { href: '/dashboard', icon: BarChart3, label: '仪表盘' }
   ]
