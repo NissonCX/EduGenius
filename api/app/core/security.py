@@ -5,11 +5,18 @@ from datetime import datetime, timedelta
 from typing import Optional
 import hashlib
 
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from pydantic import BaseModel
 
 from app.core.config import settings
+from app.db.database import get_db
+from app.models.document import User
 
 
 # ============ 密码哈希配置 ============
@@ -148,3 +155,108 @@ def create_token_for_user(user_id: int, email: str) -> str:
         "type": "access"
     }
     return create_access_token(data)
+
+
+# ============ FastAPI 依赖函数 ============
+security = HTTPBearer(auto_error=False)
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db)
+) -> User:
+    """
+    获取当前登录用户（FastAPI 依赖）
+
+    Args:
+        credentials: HTTP Bearer credentials
+        db: 数据库 session
+
+    Returns:
+        User: 当前用户对象
+
+    Raises:
+        HTTPException: 如果未认证或 token 无效
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="无法验证凭据",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    # 如果没有提供 token
+    if credentials is None:
+        raise credentials_exception
+
+    token = credentials.credentials
+
+    # 验证 token
+    token_data = verify_token(token)
+    if token_data is None:
+        raise credentials_exception
+
+    # 从数据库获取用户
+    result = await db.execute(
+        select(User).where(User.id == token_data.user_id)
+    )
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        raise credentials_exception
+
+    return user
+
+
+async def get_current_user_optional(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: AsyncSession = Depends(get_db)
+) -> Optional[User]:
+    """
+    获取当前登录用户（可选，不抛出异常）
+
+    与 get_current_user 不同，如果未认证则返回 None 而不是抛出异常
+
+    Args:
+        credentials: HTTP Bearer credentials
+        db: 数据库 session
+
+    Returns:
+        User: 当前用户对象，如果未认证则返回 None
+    """
+    if credentials is None:
+        return None
+
+    token = credentials.credentials
+    token_data = verify_token(token)
+
+    if token_data is None:
+        return None
+
+    result = await db.execute(
+        select(User).where(User.id == token_data.user_id)
+    )
+    user = result.scalar_one_or_none()
+
+    return user
+
+
+def require_auth(user: User = Depends(get_current_user)) -> User:
+    """
+    强制要求认证的快捷依赖
+
+    Args:
+        user: 从 get_current_user 获取的用户
+
+    Returns:
+        User: 用户对象
+
+    Raises:
+        HTTPException: 如果用户未认证
+    """
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="需要登录才能访问此资源"
+        )
+    return user
+

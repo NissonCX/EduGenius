@@ -13,12 +13,12 @@ import { Message } from '@/types/chat'
 import { ChatMessage } from './ChatMessage'
 import { TypingIndicator } from './TypingIndicator'
 import { StrictnessMenu } from './StrictnessMenu'
+import { useAuth } from '@/hooks/useAuth'
 
 interface StudyChatProps {
   chapterId?: string
   chapterTitle?: string
   studentLevel?: number
-  userId?: number
   onStrictnessChange?: (level: number) => void
   className?: string
 }
@@ -26,32 +26,89 @@ interface StudyChatProps {
 export function StudyChat({
   chapterId = '1',
   chapterTitle = '第一章：线性代数基础',
-  studentLevel = 3,
-  userId = 1, // 默认用户 ID
+  studentLevel,
   onStrictnessChange,
   className = ''
 }: StudyChatProps) {
+  // 使用 useAuth hook 获取真实用户信息
+  const { user, token, isAuthenticated, getAuthHeaders } = useAuth()
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
-  const [currentStrictness, setCurrentStrictness] = useState(studentLevel)
+  const [currentStrictness, setCurrentStrictness] = useState(studentLevel || user?.cognitiveLevel || 3)
   const [isLoadingHistory, setIsLoadingHistory] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  // 如果用户未登录，显示提示
+  if (!isAuthenticated || !user.id) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <p className="text-gray-500 mb-4">请先登录以开始学习</p>
+          <a
+            href="/login"
+            className="px-6 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors"
+          >
+            前往登录
+          </a>
+        </div>
+      </div>
+    )
+  }
 
   // 自动滚动到底部
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
+  // 保存对话到数据库
+  const saveConversationToDB = async (userMsg: string, aiMsg: string) => {
+    if (!user.id) return
+
+    try {
+      // 保存用户消息
+      await fetch(`http://localhost:8000/api/users/${user.id}/save-conversation`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          role: 'user',
+          content: userMsg,
+          chapter_number: parseInt(chapterId, 10),
+          document_id: 1 // TODO: 从上下文获取真实 document_id
+        })
+      })
+
+      // 保存 AI 回复
+      await fetch(`http://localhost:8000/api/users/${user.id}/save-conversation`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          role: 'assistant',
+          content: aiMsg,
+          chapter_number: parseInt(chapterId, 10),
+          document_id: 1
+        })
+      })
+    } catch (error) {
+      console.error('保存对话失败:', error)
+      throw error
+    }
+  }
+
   // 加载历史对话和用户状态
   useEffect(() => {
     const loadHistory = async () => {
+      if (!user.id) return
+
       try {
-        // 获取历史对话
+        // 获取历史对话，使用真实用户 ID
         const historyResponse = await fetch(
-          `http://localhost:8000/api/users/${userId}/history?chapter_number=${chapterId}`
+          `http://localhost:8000/api/users/${user.id}/history?chapter_number=${chapterId}`,
+          {
+            headers: getAuthHeaders()
+          }
         )
 
         if (historyResponse.ok) {
@@ -105,7 +162,7 @@ export function StudyChat({
     }
 
     loadHistory()
-  }, [userId, chapterId, chapterTitle])
+  }, [user.id, chapterId, chapterTitle])
 
   useEffect(() => {
     scrollToBottom()
@@ -119,14 +176,13 @@ export function StudyChat({
     try {
       const response = await fetch('http://localhost:8000/api/teaching/chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
           message: userMessage,
           chapter_id: chapterId,
           student_level: currentStrictness,
-          stream: true
+          stream: true,
+          user_id: user.id // 传递真实用户 ID
         })
       })
 
@@ -173,6 +229,14 @@ export function StudyChat({
           timestamp: new Date()
         }
         setMessages(prev => [...prev, assistantMessage])
+
+        // 保存对话到数据库
+        try {
+          await saveConversationToDB(userMessage, streamingContent)
+        } catch (saveError) {
+          console.error('保存对话失败:', saveError)
+          // 不影响用户体验，静默失败
+        }
       }
 
     } catch (error) {
@@ -191,8 +255,8 @@ export function StudyChat({
     }
   }
 
-  const handleSend = () => {
-    if (!input.trim() || isStreaming) return
+  const handleSend = async () => {
+    if (!input.trim() || isStreaming || !user.id) return
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -202,8 +266,9 @@ export function StudyChat({
     }
 
     setMessages(prev => [...prev, userMessage])
+    const messageToSend = input
     setInput('')
-    startStreaming(input)
+    startStreaming(messageToSend)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

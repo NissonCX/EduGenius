@@ -5,13 +5,17 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import json
 import asyncio
+import time
+from datetime import datetime, timedelta
 
 from app.db.database import get_db
 from app.agents.state.teaching_state import TeachingState
 from app.agents.graphs.teaching_graph import create_simple_teaching_flow, TeachingStreamHandler
+from app.core.security import get_current_user, get_current_user_optional
+from app.models.document import User
 from langchain_core.messages import HumanMessage, AIMessage
 
 
@@ -40,7 +44,88 @@ class AskQuestionRequest(BaseModel):
 
 # ============ In-Memory Session Storage ============
 # In production, use Redis or a proper session store
-active_sessions = {}
+active_sessions: Dict[str, Dict[str, Any]] = {}
+
+# Session 配置
+SESSION_TTL_SECONDS = 3600  # 1 小时过期
+MAX_SESSIONS = 1000  # 最大 session 数量
+SESSION_LAST_ACCESS_KEY = "_last_access"
+SESSION_CREATED_AT_KEY = "_created_at"
+
+
+async def cleanup_expired_sessions():
+    """
+    清理过期的 session
+    - 移除超过 TTL 的 session
+    - 如果超过最大数量，移除最旧的 session
+    """
+    try:
+        current_time = time.time()
+
+        # 找出过期的 session
+        expired_sessions = []
+        for session_id, session_data in active_sessions.items():
+            last_access = session_data.get(SESSION_LAST_ACCESS_KEY, 0)
+            if current_time - last_access > SESSION_TTL_SECONDS:
+                expired_sessions.append(session_id)
+
+        # 移除过期 session
+        for session_id in expired_sessions:
+            del active_sessions[session_id]
+
+        # 如果仍然超过最大数量，移除最旧的
+        if len(active_sessions) > MAX_SESSIONS:
+            # 按创建时间排序，移除最旧的
+            sessions_by_age = sorted(
+                active_sessions.items(),
+                key=lambda x: x[1].get(SESSION_CREATED_AT_KEY, 0)
+            )
+
+            num_to_remove = len(active_sessions) - MAX_SESSIONS
+            for session_id, _ in sessions_by_age[:num_to_remove]:
+                del active_sessions[session_id]
+
+    except Exception as e:
+        print(f"清理 session 失败: {e}")
+
+
+async def session_cleanup_task():
+    """
+    定时清理任务的协程
+    每 5 分钟执行一次清理
+    """
+    while True:
+        await asyncio.sleep(300)  # 5 分钟
+        await cleanup_expired_sessions()
+
+
+# 启动清理任务
+_cleanup_task = None
+
+
+def get_session_cleanup_task():
+    """获取或创建清理任务"""
+    global _cleanup_task
+    if _cleanup_task is None:
+        _cleanup_task = asyncio.create_task(session_cleanup_task())
+    return _cleanup_task
+
+
+def update_session_access(session_id: str, session_data: Dict[str, Any]):
+    """更新 session 的最后访问时间"""
+    current_time = time.time()
+    session_data[SESSION_LAST_ACCESS_KEY] = current_time
+    if SESSION_CREATED_AT_KEY not in session_data:
+        session_data[SESSION_CREATED_AT_KEY] = current_time
+    active_sessions[session_id] = session_data
+
+
+def get_session(session_id: str) -> Optional[Dict[str, Any]]:
+    """获取 session 并更新访问时间"""
+    session_data = active_sessions.get(session_id)
+    if session_data:
+        update_session_access(session_id, session_data)
+    return session_data
 
 
 # ============ Helper Functions ============
@@ -84,6 +169,9 @@ async def start_teaching_session(
     4. Runs Examiner node (generate questions)
     5. Streams results via SSE
     """
+    # 启动清理任务
+    get_session_cleanup_task()
+
     # Get chapter content
     chapter_title, chapter_content = await get_chapter_content(
         db,
@@ -125,9 +213,9 @@ async def start_teaching_session(
         "streaming_content": None
     }
 
-    # Store session
+    # Store session with timestamp
     session_id = f"{request.user_id}_{request.document_id}_{request.chapter_number}"
-    active_sessions[session_id] = initial_state
+    update_session_access(session_id, initial_state)
 
     # Create stream handler
     graph = create_simple_teaching_flow()
@@ -173,7 +261,7 @@ async def submit_answer(
     Returns SSE stream with evaluation results and feedback.
     """
     # Get session state
-    state = active_sessions.get(session_id)
+    state = get_session(session_id)
     if not state:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -197,7 +285,7 @@ async def submit_answer(
                 await asyncio.sleep(0.05)
 
             # Update session state
-            active_sessions[session_id] = state
+            update_session_access(session_id, state)
 
         except Exception as e:
             error_event = {
@@ -229,7 +317,7 @@ async def ask_tutor(
     from app.agents.nodes.tutor import TutorAgent
 
     # Get session state
-    state = active_sessions.get(session_id)
+    state = get_session(session_id)
     if not state:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -288,7 +376,7 @@ async def get_session_status(session_id: str):
     """
     Get current session status without streaming.
     """
-    state = active_sessions.get(session_id)
+    state = get_session(session_id)
     if not state:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -351,7 +439,7 @@ async def get_hint(
     from app.agents.nodes.tutor import tutor_hint_node
 
     # Get session state
-    state = active_sessions.get(session_id)
+    state = get_session(session_id)
     if not state:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -396,10 +484,14 @@ class ChatRequest(BaseModel):
     chapter_id: str = "1"
     student_level: int = 3
     stream: bool = True
+    user_id: Optional[int] = None  # 可选，如果提供则验证
 
 
 @router.post("/chat")
-async def chat_with_tutor(request: ChatRequest):
+async def chat_with_tutor(
+    request: ChatRequest,
+    current_user: Optional[User] = Depends(get_current_user_optional)
+):
     """
     简化的对话端点，兼容前端 StudyChat 组件调用格式。
 
@@ -408,6 +500,14 @@ async def chat_with_tutor(request: ChatRequest):
     from app.agents.nodes.tutor import TutorAgent
     from app.core.config import settings, get_model_name
 
+    # 获取真实用户 ID（优先使用认证用户，其次使用请求中的 user_id）
+    user_id = current_user.id if current_user else request.user_id
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="需要提供用户认证"
+        )
+
     # 创建 Tutor 智能体
     model_name = get_model_name(request.student_level)
     tutor = TutorAgent(api_key=settings.DASHSCOPE_API_KEY, model=model_name)
@@ -415,8 +515,8 @@ async def chat_with_tutor(request: ChatRequest):
     # 准备对话状态
     temp_state: TeachingState = {
         "student_level": request.student_level,
-        "user_id": 1,  # 默认用户
-        "document_id": 1,  # 默认文档
+        "user_id": user_id,  # 使用真实用户 ID
+        "document_id": 1,  # TODO: 从数据库获取用户当前学习的文档
         "current_chapter": int(request.chapter_id),
         "chapter_title": f"第{request.chapter_id}章",
         "chapter_content": "",

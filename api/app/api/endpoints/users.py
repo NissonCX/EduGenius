@@ -504,3 +504,49 @@ async def get_user_stats(
         "chapter_counts": status_counts,
         "total_chapters": len(progress_records)
     }
+
+
+@router.post("/{user_id}/save-conversation")
+async def save_conversation(
+    user_id: int,
+    conversation_data: dict,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    保存单条对话记录
+
+    - 保存用户消息或 AI 回复
+    - 自动关联到章节和文档
+    """
+    from app.models.document import User as UserModel
+
+    # 验证用户存在
+    result = await db.execute(
+        select(UserModel).where(UserModel.id == user_id)
+    )
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在"
+        )
+
+    # 创建对话记录
+    conversation = ConversationHistory(
+        user_id=user_id,
+        document_id=conversation_data.get("document_id", 1),
+        chapter_number=conversation_data.get("chapter_number", 1),
+        role=conversation_data.get("role", "user"),
+        content=conversation_data.get("content", ""),
+        student_level_at_time=user.cognitive_level
+    )
+
+    db.add(conversation)
+    await db.commit()
+
+    return {
+        "status": "success",
+        "message": "对话已保存",
+        "id": conversation.id
+    }
