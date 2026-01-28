@@ -249,10 +249,10 @@ export default function DashboardPage() {
               >
                 <div className="flex items-center gap-3">
                   <div className={`w-2 h-2 rounded-full ${
-                    activity.status === 'completed' ? 'bg-emerald-500' :
-                    activity.status === 'progress' ? 'bg-blue-500' :
-                    activity.status === 'success' ? 'bg-emerald-500' :
-                    'bg-purple-500'
+                    activity.status === 'completed' ? 'bg-black' :
+                    activity.status === 'progress' ? 'bg-gray-400' :
+                    activity.status === 'success' ? 'bg-black' :
+                    'bg-gray-600'
                   }`} />
                   <div>
                     <p className="text-sm text-black">

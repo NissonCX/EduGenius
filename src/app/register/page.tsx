@@ -17,36 +17,31 @@ const TEACHING_STYLES = [
     value: 1,
     name: '温柔',
     description: '耐心细致，用简单的例子和鼓励帮助你理解',
-    icon: '🌸',
-    color: 'bg-emerald-50 border-emerald-200 hover:border-emerald-400'
+    icon: '🌸'
   },
   {
     value: 2,
     name: '耐心',
     description: '循序渐进，提供详细的讲解和指导',
-    icon: '📗',
-    color: 'bg-blue-50 border-blue-200 hover:border-blue-400'
+    icon: '📗'
   },
   {
     value: 3,
     name: '标准',
     description: '平衡严谨，既讲清原理又注重应用',
-    icon: '📘',
-    color: 'bg-purple-50 border-purple-200 hover:border-purple-400'
+    icon: '📘'
   },
   {
     value: 4,
     name: '严格',
     description: '注重细节，要求深入理解每一步推理',
-    icon: '📙',
-    color: 'bg-orange-50 border-orange-200 hover:border-orange-400'
+    icon: '📙'
   },
   {
     value: 5,
     name: '严厉',
     description: '挑战思维，培养独立解决问题的能力',
-    icon: '🏆',
-    color: 'bg-red-50 border-red-200 hover:border-red-400'
+    icon: '🏆'
   }
 ]
 
@@ -205,7 +200,7 @@ export default function RegisterPage() {
                     className={`p-4 rounded-xl border-2 text-left transition-all ${
                       selectedStyle === style.value
                         ? 'border-black bg-black text-white'
-                        : `${style.color} border-gray-200`
+                        : 'border-gray-200 bg-white hover:border-gray-300'
                     }`}
                   >
                     <div className="flex items-start gap-3">

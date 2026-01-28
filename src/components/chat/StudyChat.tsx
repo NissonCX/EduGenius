@@ -320,12 +320,18 @@ export function StudyChat({
         </div>
 
         {/* 流光进度条 */}
-        <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+        <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden relative">
           <motion.div
-            className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full"
+            className="h-full bg-black rounded-full"
             initial={{ width: 0 }}
             animate={{ width: '65%' }}
             transition={{ duration: 0.8, ease: 'easeOut' }}
+          />
+          {/* 流光效果 */}
+          <motion.div
+            className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
+            animate={{ x: ['-100%', '100%'] }}
+            transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
           />
         </div>
       </div>

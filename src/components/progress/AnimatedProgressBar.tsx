@@ -55,7 +55,7 @@ export function AnimatedProgressBar({
       >
         {/* 背景进度条 */}
         <motion.div
-          className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full"
+          className="h-full bg-black rounded-full"
           initial={{ width: 0 }}
           animate={{ width: `${percentage}%` }}
           transition={{ duration: 0.6, ease: 'easeOut' }}
@@ -68,27 +68,17 @@ export function AnimatedProgressBar({
             initial={{ x: '-100%' }}
             animate={{ x: '100%' }}
             transition={{
-              duration: 0.8,
-              ease: 'easeInOut',
-              times: [0, 0.5, 1]
+              duration: 1.5,
+              ease: 'linear',
+              repeat: Infinity
             }}
             style={{
-              background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent)',
-              width: '50%'
+              background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)',
+              width: '100%'
             }}
           />
         )}
 
-        {/* 发光效果（动画时） */}
-        {isAnimating && (
-          <motion.div
-            className="absolute top-0 left-0 h-full rounded-full"
-            style={{
-              background: 'linear-gradient(90deg, rgba(16,185,129,0) 0%, rgba(16,185,129,0.4) 50%, rgba(16,185,129,0) 100%)',
-              animation: 'pulse 1s ease-in-out infinite'
-            }}
-          />
-        )}
       </div>
 
       {/* 百分比显示 */}
@@ -99,48 +89,13 @@ export function AnimatedProgressBar({
             key={percentage}
             initial={{ scale: 1.2, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="text-sm font-semibold text-emerald-600"
+            className="text-sm font-semibold text-black"
           >
             {Math.round(percentage)}%
           </motion.span>
         </div>
       )}
 
-      {/* 动画闪光粒子 */}
-      {isAnimating && (
-        <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-full">
-          {[...Array(5)].map((_, i) => (
-            <motion.div
-              key={i}
-              className="absolute w-1 h-1 bg-emerald-300 rounded-full"
-              initial={{
-                x: `${percentage * 0.8}%`,
-                y: '50%',
-                scale: 0,
-                opacity: 1
-              }}
-              animate={{
-                x: `${percentage * 1.2}%`,
-                y: ['50%', '30%', '70%', '50%'],
-                scale: [0, 1, 0],
-                opacity: [1, 1, 0]
-              }}
-              transition={{
-                duration: 1,
-                delay: i * 0.1,
-                ease: 'easeOut'
-              }}
-            />
-          ))}
-        </div>
-      )}
-
-      <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 0.3; }
-          50% { opacity: 0.6; }
-        }
-      `}</style>
     </div>
   )
 }

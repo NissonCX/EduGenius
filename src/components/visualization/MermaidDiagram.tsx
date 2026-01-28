@@ -29,11 +29,11 @@ export function MermaidDiagram({ code, className = '' }: MermaidDiagramProps) {
         theme: 'default',
         securityLevel: 'loose',
         themeVariables: {
-          primaryColor: '#10B981',
-          primaryTextColor: '#1F2937',
-          primaryBorderColor: '#10B981',
+          primaryColor: '#000000',
+          primaryTextColor: '#111827',
+          primaryBorderColor: '#000000',
           lineColor: '#6B7280',
-          secondaryColor: '#3B82F6',
+          secondaryColor: '#374151',
           tertiaryColor: '#F3F4F6',
           fontSize: '14px'
         },
@@ -83,7 +83,7 @@ export function MermaidDiagram({ code, className = '' }: MermaidDiagramProps) {
   if (!svgContent) {
     return (
       <div className={`flex items-center justify-center p-8 ${className}`}>
-        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-emerald-600"></div>
+        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-300"></div>
       </div>
     )
   }

@@ -31,11 +31,11 @@ export function StrictnessMenu({ currentLevel, onChange }: StrictnessMenuProps) 
   }, [])
 
   const levels = [
-    { value: 1, label: '温柔', description: '耐心细致', color: 'bg-emerald-500' },
-    { value: 2, label: '耐心', description: '循序渐进', color: 'bg-blue-500' },
-    { value: 3, label: '标准', description: '平衡严谨', color: 'bg-indigo-500' },
-    { value: 4, label: '严格', description: '注重细节', color: 'bg-orange-500' },
-    { value: 5, label: '严厉', description: '挑战思维', color: 'bg-red-500' }
+    { value: 1, label: '温柔', description: '耐心细致' },
+    { value: 2, label: '耐心', description: '循序渐进' },
+    { value: 3, label: '标准', description: '平衡严谨' },
+    { value: 4, label: '严格', description: '注重细节' },
+    { value: 5, label: '严厉', description: '挑战思维' }
   ]
 
   const currentLevelData = currentLevel !== null ? levels.find(l => l.value === currentLevel) : null
@@ -93,11 +93,6 @@ export function StrictnessMenu({ currentLevel, onChange }: StrictnessMenuProps) 
                       transition={{ delay: index * 0.03 }}
                     >
                       <div className="flex items-center gap-3">
-                        {/* 颜色指示器 */}
-                        <div className={`w-2 h-2 rounded-full ${level.color} ${
-                          isSelected ? 'bg-white' : ''
-                        }`} />
-
                         {/* 风格名称 */}
                         <div className="flex-1">
                           <div className="flex items-center gap-2">

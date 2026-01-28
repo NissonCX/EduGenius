@@ -96,9 +96,9 @@ export function CompetencyRadar({
     chartData.reduce((sum, item) => sum + item.value, 0) / chartData.length
   )
 
-  // 现代配色方案（使用紫色渐变）
-  const radarColor = 'rgba(99, 102, 241, 0.25)'
-  const strokeColor = 'rgba(99, 102, 241, 1)'
+  // 单色调低饱和度设计（黑色系）
+  const radarColor = 'rgba(0, 0, 0, 0.03)'  // 极浅填充
+  const strokeColor = 'rgba(0, 0, 0, 0.3)'     // 深色描边
 
   return (
     <div className={className}>
@@ -121,7 +121,7 @@ export function CompetencyRadar({
       {/* 雷达图 */}
       {isLoading ? (
         <div className="w-full h-64 flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-300"></div>
         </div>
       ) : (
         <ResponsiveContainer width="100%" height={280}>
@@ -147,7 +147,7 @@ export function CompetencyRadar({
               dataKey="value"
               stroke={strokeColor}
               fill={radarColor}
-              strokeWidth={1.5}
+              strokeWidth={1}
               dot={{ r: 2, fill: strokeColor }}
               animationBegin={0}
               animationDuration={800}

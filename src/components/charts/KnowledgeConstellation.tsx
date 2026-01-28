@@ -125,16 +125,16 @@ export function KnowledgeConstellation({
   // 根据状态获取节点颜色和发光效果
   const getNodeStyle = (node: KnowledgeNode) => {
     const colors = {
-      completed: { fill: '#10B981', glow: 'rgba(16, 185, 129, 0.3)' },
-      'in-progress': { fill: '#3B82F6', glow: 'rgba(59, 130, 246, 0.2)' },
+      completed: { fill: '#000000', glow: 'rgba(0, 0, 0, 0.15)' },
+      'in-progress': { fill: '#6B7280', glow: 'rgba(107, 114, 128, 0.15)' },
       locked: { fill: '#D1D5DB', glow: 'transparent' }
     }
     return colors[node.status]
   }
 
   const legend = [
-    { status: 'completed', label: '已掌握', color: '#10B981' },
-    { status: 'in-progress', label: '学习中', color: '#3B82F6' },
+    { status: 'completed', label: '已掌握', color: '#000000' },
+    { status: 'in-progress', label: '学习中', color: '#6B7280' },
     { status: 'locked', label: '未解锁', color: '#D1D5DB' }
   ]
 
@@ -190,7 +190,7 @@ export function KnowledgeConstellation({
               {/* 节点发光滤镜 */}
               <filter id="glow-completed" x="-50%" y="-50%" width="200%" height="200%">
                 <feGaussianBlur stdDeviation="3" result="blur" />
-                <feFlood floodColor="#10B981" floodOpacity="0.3" result="glowColor" />
+                <feFlood floodColor="#000000" floodOpacity="0.15" result="glowColor" />
                 <feComposite in="glowColor" in2="blur" operator="in" result="softGlow" />
                 <feMerge>
                   <feMergeNode in="softGlow" />
@@ -200,7 +200,7 @@ export function KnowledgeConstellation({
 
               <filter id="glow-progress" x="-50%" y="-50%" width="200%" height="200%">
                 <feGaussianBlur stdDeviation="2" result="blur" />
-                <feFlood floodColor="#3B82F6" floodOpacity="0.25" result="glowColor" />
+                <feFlood floodColor="#6B7280" floodOpacity="0.2" result="glowColor" />
                 <feComposite in="glowColor" in2="blur" operator="in" result="softGlow" />
                 <feMerge>
                   <feMergeNode in="softGlow" />
@@ -253,15 +253,42 @@ export function KnowledgeConstellation({
                   onMouseLeave={() => setHoverNode(null)}
                   onClick={() => onNodeClick?.(node)}
                 >
-                  {/* 外发光（已完成节点） */}
+                  {/* 外发光（已完成节点）- 带脉冲效果 */}
                   {node.status === 'completed' && (
-                    <circle
-                      cx={pos.x}
-                      cy={pos.y}
-                      r={size * 1.5}
-                      fill={style.glow}
-                      opacity={0.6}
-                    />
+                    <>
+                      <motion.circle
+                        cx={pos.x}
+                        cy={pos.y}
+                        r={size * 1.5}
+                        fill={style.glow}
+                        animate={{
+                          opacity: [0.3, 0.6, 0.3],
+                          r: [size * 1.3, size * 1.6, size * 1.3]
+                        }}
+                        transition={{
+                          duration: 2,
+                          repeat: Infinity,
+                          ease: 'easeInOut'
+                        }}
+                      />
+                      <motion.circle
+                        cx={pos.x}
+                        cy={pos.y}
+                        r={size * 1.8}
+                        fill="transparent"
+                        stroke="rgba(0, 0, 0, 0.1)"
+                        strokeWidth={1}
+                        animate={{
+                          opacity: [0, 0.5, 0],
+                          r: [size * 1.5, size * 2.2, size * 1.5]
+                        }}
+                        transition={{
+                          duration: 3,
+                          repeat: Infinity,
+                          ease: 'easeOut'
+                        }}
+                      />
+                    </>
                   )}
 
                   {/* 主圆圈 */}
@@ -346,8 +373,8 @@ export function KnowledgeConstellation({
       {/* 简化的统计信息 */}
       <div className="mt-4 flex justify-center gap-6">
         {[
-          { count: nodes.filter(n => n.status === 'completed').length, label: '已掌握', color: 'text-emerald-600 bg-emerald-50 border-emerald-100' },
-          { count: nodes.filter(n => n.status === 'in-progress').length, label: '学习中', color: 'text-blue-600 bg-blue-50 border-blue-100' },
+          { count: nodes.filter(n => n.status === 'completed').length, label: '已掌握', color: 'text-black bg-gray-50 border-gray-200' },
+          { count: nodes.filter(n => n.status === 'in-progress').length, label: '学习中', color: 'text-gray-700 bg-gray-50 border-gray-200' },
           { count: nodes.filter(n => n.status === 'locked').length, label: '未解锁', color: 'text-gray-600 bg-gray-50 border-gray-200' }
         ].map((stat, i) => (
           <motion.div
