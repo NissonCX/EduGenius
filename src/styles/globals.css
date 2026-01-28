@@ -1,0 +1,130 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+/* Base Styles */
+@layer base {
+  * {
+    border-color: #E5E7EB;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: 'cv11', 'ss01';
+    font-variation-settings: 'opsz' 32;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background-color: #FFFFFF;
+    color: #000000;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    letter-spacing: -0.01em;
+  }
+
+  /* Focus states for accessibility */
+  *:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.1), 0 0 0 4px #FFFFFF;
+  }
+
+  /* Selection */
+  ::selection {
+    background-color: rgba(0, 0, 0, 0.1);
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background-color: #F9FAFB;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: rgba(107, 114, 128, 0.2);
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(107, 114, 128, 0.3);
+  }
+
+  /* Reduced motion */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* Component Styles */
+@layer components {
+  /* Card base */
+  .card-base {
+    background-color: #FFFFFF;
+    border: 0.5px solid #E5E7EB;
+    border-radius: 1rem;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    transition: box-shadow 200ms;
+  }
+
+  .card-base:hover {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  }
+
+  /* Interactive elements */
+  .interactive {
+    cursor: pointer;
+    transition: all 200ms;
+  }
+
+  .interactive:hover {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  }
+
+  /* Container */
+  .container-x {
+    max-width: 80rem;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  @media (min-width: 640px) {
+    .container-x {
+      padding-left: 1.5rem;
+      padding-right: 1.5rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .container-x {
+      padding-left: 2rem;
+      padding-right: 2rem;
+    }
+  }
+}
+
+/* Utilities */
+@layer utilities {
+  /* Text balance for headings */
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Hairline border */
+  .hairline {
+    border-width: 0.5px;
+    border-color: #E5E7EB;
+  }
+}
