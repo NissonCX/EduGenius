@@ -208,9 +208,3 @@ export function useRequireAuth() {
 
   return auth
 }
-
-// Next.js useRouter import（仅在服务端使用时需要）
-function useRouter() {
-  // 简化实现，实际应该从 next/navigation 导入
-  return { push: (path: string) => { window.location.href = path } }
-}
