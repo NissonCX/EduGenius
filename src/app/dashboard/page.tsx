@@ -9,18 +9,13 @@ import { useAuth } from '@/hooks/useAuth'
 
 export default function DashboardPage() {
   const { user, isAuthenticated, token } = useAuth()
-  const [studentLevel, setStudentLevel] = useState(user?.cognitiveLevel || 3)
   const [competencyData, setCompetencyData] = useState<any>(null)
   const [knowledgeGraph, setKnowledgeGraph] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [userStats, setUserStats] = useState<any>(null)
 
-  useEffect(() => {
-    // 更新等级当用户信息变化时
-    if (user?.cognitiveLevel) {
-      setStudentLevel(user.cognitiveLevel)
-    }
-  }, [user?.cognitiveLevel])
+  // 获取用户当前等级（从后端获取，不可修改）
+  const studentLevel = user?.cognitiveLevel || 1
 
   useEffect(() => {
     const loadData = async () => {
@@ -116,25 +111,20 @@ export default function DashboardPage() {
         </motion.div>
       </section>
 
-      {/* Level Selector */}
+      {/* Current Level Display */}
       <section className="container-x py-6">
         <div className="flex items-center gap-4">
           <span className="text-sm font-medium text-gray-700">当前认知等级：</span>
-          <div className="flex gap-2">
-            {[1, 2, 3, 4, 5].map((level) => (
-              <button
-                key={level}
-                onClick={() => setStudentLevel(level)}
-                className={`px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
-                  studentLevel === level
-                    ? 'bg-black text-white shadow-md'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                L{level}
-              </button>
-            ))}
+          <div className="px-6 py-2 bg-black text-white rounded-xl text-sm font-medium shadow-md">
+            L{studentLevel}
           </div>
+          <span className="text-xs text-gray-500 ml-2">
+            {studentLevel === 1 && '初级 - 适合初学者'}
+            {studentLevel === 2 && '入门 - 掌握基础概念'}
+            {studentLevel === 3 && '进阶 - 理解核心原理'}
+            {studentLevel === 4 && '高级 - 能够综合应用'}
+            {studentLevel === 5 && '专家 - 深入专精'}
+          </span>
         </div>
       </section>
 

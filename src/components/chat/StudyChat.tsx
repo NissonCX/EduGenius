@@ -37,15 +37,16 @@ export function StudyChat({
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
-  const [currentStrictness, setCurrentStrictness] = useState(studentLevel || user?.cognitiveLevel || 3)
+  // 初始化等级，等待用户数据加载完成
+  const [currentStrictness, setCurrentStrictness] = useState<number | null>(null)
   const [isLoadingHistory, setIsLoadingHistory] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  // 当用户的 cognitiveLevel 加载完成后，更新当前等级显示
+  // 当用户数据加载完成后，设置等级
   useEffect(() => {
-    if (user?.cognitiveLevel && !studentLevel) {
-      setCurrentStrictness(user.cognitiveLevel)
+    if (user?.cognitiveLevel) {
+      setCurrentStrictness(studentLevel || user.cognitiveLevel)
     }
   }, [user?.cognitiveLevel, studentLevel])
 
@@ -314,7 +315,7 @@ export function StudyChat({
           <div>
             <h2 className="text-lg font-semibold text-black">{chapterTitle}</h2>
             <p className="text-sm text-gray-500 mt-1">
-              当前等级：<span className="font-medium">L{currentStrictness}</span>
+              当前等级：<span className="font-medium">{currentStrictness ? `L${currentStrictness}` : '加载中...'}</span>
             </p>
           </div>
           <div className="text-right">
