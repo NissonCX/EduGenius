@@ -282,8 +282,6 @@ export function StudyChat({
     }
   }
 
-  }
-
   return (
     <div className={`flex flex-col h-full bg-white ${className}`}>
       {/* 如果用户未登录，显示提示 */}
