@@ -227,6 +227,96 @@ class CompetencyData(BaseModel):
 
 # ============ 端点实现 ============
 
+
+async def get_or_create_progress(
+    user_id: int,
+    document_id: int,
+    chapter_number: int,
+    chapter_title: str,
+    db: AsyncSession
+) -> Progress:
+    """
+    获取或创建进度记录
+
+    Args:
+        user_id: 用户 ID
+        document_id: 文档 ID
+        chapter_number: 章节编号
+        chapter_title: 章节标题
+        db: 数据库 session
+
+    Returns:
+        Progress: 进度记录对象
+    """
+    # 尝试获取现有进度
+    result = await db.execute(
+        select(Progress).where(
+            Progress.user_id == user_id,
+            Progress.document_id == document_id,
+            Progress.chapter_number == chapter_number
+        )
+    )
+    progress = result.scalar_one_or_none()
+
+    if not progress:
+        # 创建新进度记录
+        progress = Progress(
+            user_id=user_id,
+            document_id=document_id,
+            chapter_number=chapter_number,
+            chapter_title=chapter_title,
+            status="in_progress",
+            completion_percentage=0.0,
+            cognitive_level_assigned=None,  # 将从用户获取
+            time_spent_minutes=0,
+            quiz_attempts=0,
+            quiz_success_rate=0.0
+        )
+        db.add(progress)
+        await db.commit()
+        await db.refresh(progress)
+    else:
+        # 如果已锁定，解锁它
+        if progress.status == "locked":
+            progress.status = "in_progress"
+            await db.commit()
+
+    return progress
+
+
+async def update_progress_activity(
+    progress_id: int,
+    time_spent_add: int = 1,
+    db: AsyncSession = None
+) -> Progress:
+    """
+    更新进度活动（时间和最后访问时间）
+
+    Args:
+        progress_id: 进度 ID
+        time_spent_add: 增加的时间（分钟）
+        db: 数据库 session
+
+    Returns:
+        Progress: 更新后的进度对象
+    """
+    result = await db.execute(
+        select(Progress).where(Progress.id == progress_id)
+    )
+    progress = result.scalar_one_or_none()
+
+    if progress:
+        from datetime import datetime
+        progress.last_accessed_at = datetime.now()
+        progress.time_spent_minutes = (progress.time_spent_minutes or 0) + time_spent_add
+        await db.commit()
+        await db.refresh(progress)
+
+    return progress
+
+
+# ============ 端点实现 ============
+
 @router.post("/register", response_model=UserResponse)
 async def register_user(
     user_data: UserRegister,
@@ -611,6 +701,65 @@ async def get_user_stats(
         "chapter_counts": status_counts,
         "total_chapters": len(progress_records)
     }
+
+
+@router.post("/{user_id}/update-chapter-progress")
+async def update_chapter_progress(
+    user_id: int,
+    progress_data: dict,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    在学习过程中更新进度
+
+    - 记录学习时间
+    - 更新最后访问时间
+    - 可选地更新完成百分比
+    """
+    document_id = progress_data.get("document_id", 1)
+    chapter_number = progress_data.get("chapter_number", 1)
+    chapter_title = progress_data.get("chapter_title", f"第{chapter_number}章")
+    time_spent_add = progress_data.get("time_spent_minutes", 1)
+
+    try:
+        # 获取或创建进度记录
+        progress = await get_or_create_progress(
+            user_id,
+            document_id,
+            chapter_number,
+            chapter_title,
+            db
+        )
+
+        # 更新活动
+        progress = await update_progress_activity(
+            progress.id,
+            time_spent_add,
+            db
+        )
+
+        # 如果提供了完成百分比，更新它
+        if "completion_percentage" in progress_data:
+            progress.completion_percentage = min(100, max(0, progress_data["completion_percentage"]))
+
+            # 如果完成度达到 80%，标记为完成
+            if progress.completion_percentage >= 80 and progress.status != "completed":
+                progress.status = "completed"
+                progress.completed_at = datetime.now()
+
+        await db.commit()
+
+        return {
+            "status": "success",
+            "progress_id": progress.id,
+            "completion_percentage": progress.completion_percentage,
+            "time_spent_minutes": progress.time_spent_minutes
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"更新进度失败: {str(e)}"
+        )
 
 
 @router.post("/{user_id}/save-conversation")

@@ -68,6 +68,19 @@ export function StudyChat({
     if (!user.id) return
 
     try {
+      // 更新学习进度（增加1分钟学习时间）
+      await fetch(`http://localhost:8000/api/users/${user.id}/update-chapter-progress`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          document_id: 1, // TODO: 从上下文获取真实 document_id
+          chapter_number: parseInt(chapterId, 10),
+          chapter_title: chapterTitle,
+          time_spent_minutes: 1,
+          completion_percentage: null // 让后端自动计算
+        })
+      })
+
       // 保存用户消息
       await fetch(`http://localhost:8000/api/users/${user.id}/save-conversation`, {
         method: 'POST',
