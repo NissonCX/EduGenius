@@ -4,9 +4,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from typing import List, Optional
+from typing import List, Optional, Dict
 from datetime import datetime
 from pydantic import BaseModel, EmailStr
+import re
 
 from app.db.database import get_db
 from app.models.document import User, ConversationHistory, QuizAttempt, Progress
@@ -26,6 +27,132 @@ from app.core.security import (
 )
 
 router = APIRouter(prefix="/api/users", tags=["users"])
+
+
+# ============ 能力评估辅助函数 ============
+def classify_question_type(question_text: str) -> str:
+    """
+    根据题目文本判断题目类型
+
+    Args:
+        question_text: 题目文本
+
+    Returns:
+        str: 题目类型 (comprehension, logic, terminology, memory, application)
+    """
+    question_lower = question_text.lower()
+
+    # 理解类题目关键词
+    comprehension_keywords = ['理解', '解释', '说明', '描述', '阐述', '分析', '总结', '概括',
+                             'understand', 'explain', 'describe', 'analyze', 'summarize']
+    # 逻辑类题目关键词
+    logic_keywords = ['推导', '证明', '为什么', '原因', '因此', '逻辑', '推理', '判断',
+                      'derive', 'prove', 'why', 'reason', 'logic', 'deduce']
+    # 术语类题目关键词
+    terminology_keywords = ['定义', '什么是', '术语', '概念', '名称', '符号', '表示',
+                            'define', 'what is', 'term', 'concept', 'definition']
+    # 记忆类题目关键词
+    memory_keywords = ['记住', '背诵', '列举', '写出', '公式', '定理', '定律',
+                       'memorize', 'list', 'write', 'formula', 'theorem']
+    # 应用类题目关键词
+    application_keywords = ['计算', '求解', '应用', '使用', '实例', '例子', '实际',
+                            'calculate', 'solve', 'apply', 'example', 'practice']
+
+    # 统计各类型关键词出现次数
+    scores = {
+        'comprehension': sum(1 for kw in comprehension_keywords if kw in question_lower),
+        'logic': sum(1 for kw in logic_keywords if kw in question_lower),
+        'terminology': sum(1 for kw in terminology_keywords if kw in question_lower),
+        'memory': sum(1 for kw in memory_keywords if kw in question_lower),
+        'application': sum(1 for kw in application_keywords if kw in question_lower),
+    }
+
+    # 返回得分最高的类型，如果没有匹配则默认为理解类
+    max_score = max(scores.values())
+    if max_score == 0:
+        return 'comprehension'  # 默认类型
+
+    return max(scores, key=scores.get)
+
+
+def calculate_competency_scores(quiz_attempts: List[QuizAttempt]) -> Dict[str, int]:
+    """
+    基于答题记录计算六维能力评分
+
+    Args:
+        quiz_attempts: 题目尝试记录列表
+
+    Returns:
+        Dict[str, int]: 六维能力评分
+    """
+    # 初始化各维度的数据
+    dimensions = {
+        'comprehension': {'correct': 0, 'total': 0, 'time': []},
+        'logic': {'correct': 0, 'total': 0, 'time': []},
+        'terminology': {'correct': 0, 'total': 0, 'time': []},
+        'memory': {'correct': 0, 'total': 0, 'time': []},
+        'application': {'correct': 0, 'total': 0, 'time': []},
+    }
+
+    # 用于计算稳定性
+    question_first_attempts = {}  # 记录每道题的第一次尝试
+
+    for attempt in quiz_attempts:
+        # 分类题目类型
+        question_type = classify_question_type(attempt.question_text)
+
+        # 更新对应维度数据
+        if question_type in dimensions:
+            dimensions[question_type]['total'] += 1
+            if attempt.is_correct:
+                dimensions[question_type]['correct'] += 1
+            if attempt.time_spent_seconds:
+                dimensions[question_type]['time'].append(attempt.time_spent_seconds)
+
+        # 记录第一次尝试（用于计算稳定性）
+        question_key = f"{attempt.question_text[:50]}"  # 使用题目前50字符作为唯一标识
+        if question_key not in question_first_attempts:
+            question_first_attempts[question_key] = attempt.is_correct
+
+    # 计算各维度得分
+    scores = {}
+
+    for dimension, data in dimensions.items():
+        if data['total'] == 0:
+            # 没有该类型题目，使用默认值
+            scores[dimension] = 50
+        else:
+            # 基础分数：正确率 * 100
+            accuracy_rate = data['correct'] / data['total']
+            base_score = accuracy_rate * 100
+
+            # 时间加成：答题时间合理则加分
+            time_bonus = 0
+            if data['time']:
+                avg_time = sum(data['time']) / len(data['time'])
+                # 假设理想答题时间是 30-120 秒
+                if 30 <= avg_time <= 120:
+                    time_bonus = 5
+                elif avg_time < 30:
+                    time_bonus = -5  # 答题太快可能不认真
+                # 超过120秒不扣分，因为题目可能很难
+
+            # 数量加成：题目越多，分数越可信
+            count_bonus = min(10, data['total'] * 2)
+
+            # 最终分数
+            final_score = min(100, max(0, int(base_score + time_bonus + count_bonus)))
+            scores[dimension] = final_score
+
+    # 计算稳定性（基于重复答题的改进情况）
+    if question_first_attempts:
+        first_attempts = list(question_first_attempts.values())
+        stability_score = int((sum(first_attempts) / len(first_attempts)) * 100)
+        scores['stability'] = stability_score
+    else:
+        scores['stability'] = 50
+
+    return scores
 
 
 # ============ 认证请求/响应模型 ============
@@ -300,32 +427,12 @@ async def get_user_history(
     competency_result = await db.execute(
         select(QuizAttempt).where(
             QuizAttempt.user_id == user_id
-        ).order_by(QuizAttempt.created_at.desc()).limit(20)
+        ).order_by(QuizAttempt.created_at.desc()).limit(50)
     )
     quiz_attempts = competency_result.scalars().all()
 
-    # 计算六个维度的能力评分
-    competency_scores = {
-        "comprehension": 70,  # 理解力
-        "logic": 68,          # 逻辑
-        "terminology": 75,     # 术语
-        "memory": 82,         # 记忆
-        "application": 60,     # 应用
-        "stability": 72        # 稳定性
-    }
-
-    if quiz_attempts:
-        # 根据题目正确率调整评分
-        correct_count = sum(1 for attempt in quiz_attempts if attempt.is_correct)
-        total_count = len(quiz_attempts)
-        if total_count > 0:
-            base_score = (correct_count / total_count) * 100
-            # 所有维度都基于这个正确率，加一些随机差异
-            import random
-            for key in competency_scores:
-                competency_scores[key] = min(100, max(0, int(
-                    base_score + random.uniform(-10, 10)
-                )))
+    # 计算六个维度的能力评分（基于真实答题数据）
+    competency_scores = calculate_competency_scores(list(quiz_attempts))
 
     return HistoryResponse(
         conversations=[
