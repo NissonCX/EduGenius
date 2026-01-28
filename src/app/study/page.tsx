@@ -5,16 +5,27 @@
  * 整合聊天界面和侧边栏
  */
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { StudyChat } from '@/components/chat/StudyChat'
 import { StudySidebar } from '@/components/chat/StudySidebar'
+import { useAuth } from '@/hooks/useAuth'
 
 export default function StudyPage() {
-  const [studentLevel, setStudentLevel] = useState(3)
+  const { user } = useAuth()
   const [completedTopics, setCompletedTopics] = useState<string[]>([
     '向量的定义',
     '向量的表示方法'
   ])
+
+  // 使用用户的导师风格，如果没有则使用默认值3
+  const [teachingStyle, setTeachingStyle] = useState(user?.teachingStyle || 3)
+
+  // 当用户的 teachingStyle 更新时同步
+  useEffect(() => {
+    if (user?.teachingStyle) {
+      setTeachingStyle(user.teachingStyle)
+    }
+  }, [user?.teachingStyle])
 
   const keyPoints = [
     '向量的定义',
@@ -27,10 +38,9 @@ export default function StudyPage() {
     '线性相关与线性无关'
   ]
 
-  const handleStrictnessChange = (level: number) => {
-    setStudentLevel(level)
-    // 这里可以添加 API 调用来更新用户等级
-    console.log('Strictness changed to:', level)
+  const handleStyleChange = (style: number) => {
+    setTeachingStyle(style)
+    console.log('Teaching style changed to:', style)
   }
 
   return (
@@ -40,14 +50,14 @@ export default function StudyPage() {
         <StudyChat
           chapterId="1"
           chapterTitle="第一章：线性代数基础"
-          studentLevel={studentLevel}
-          onStrictnessChange={handleStrictnessChange}
+          studentLevel={teachingStyle}
+          onStrictnessChange={handleStyleChange}
         />
       </div>
 
       {/* 右侧边栏 */}
       <StudySidebar
-        studentLevel={studentLevel}
+        teachingStyle={teachingStyle}
         chapterTitle="第一章：线性代数基础"
         keyPoints={keyPoints}
         completedTopics={completedTopics}
