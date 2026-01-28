@@ -365,8 +365,8 @@ export default function DocumentUploadPage() {
                       <span className="text-gray-600">状态</span>
                       <span className={`px-2 py-1 rounded text-xs font-medium ${
                         doc.processing_status === 'completed'
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : 'bg-yellow-100 text-yellow-700'
+                          ? 'bg-gray-100 text-gray-700'
+                          : 'bg-gray-50 text-gray-600'
                       }`}>
                         {doc.processing_status === 'completed' ? '✓ 已处理' : '处理中'}
                       </span>
