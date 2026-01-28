@@ -5,29 +5,44 @@ import { motion } from 'framer-motion'
 import { CompetencyRadar } from '@/components/charts/CompetencyRadar'
 import { KnowledgeConstellation } from '@/components/charts/KnowledgeConstellation'
 import { fetchCompetencyData, fetchKnowledgeGraph } from '@/lib/api'
+import { useAuth } from '@/hooks/useAuth'
 
 export default function DashboardPage() {
-  const [studentLevel, setStudentLevel] = useState(3)
+  const { user, isAuthenticated, token } = useAuth()
+  const [studentLevel, setStudentLevel] = useState(user?.cognitiveLevel || 3)
   const [competencyData, setCompetencyData] = useState<any>(null)
   const [knowledgeGraph, setKnowledgeGraph] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [userStats, setUserStats] = useState<any>(null)
+
+  useEffect(() => {
+    // 更新等级当用户信息变化时
+    if (user?.cognitiveLevel) {
+      setStudentLevel(user.cognitiveLevel)
+    }
+  }, [user?.cognitiveLevel])
 
   useEffect(() => {
     const loadData = async () => {
+      if (!isAuthenticated || !user.id) {
+        setIsLoading(false)
+        return
+      }
+
       setIsLoading(true)
       try {
-        // 模拟用户和文档 ID
-        const userId = 1
-        const documentId = 1
+        const documentId = 1 // TODO: 从用户当前学习的文档获取
 
         // 并行获取数据
-        const [competency, graph] = await Promise.all([
-          fetchCompetencyData(userId, documentId),
-          fetchKnowledgeGraph(userId, documentId, 1)
+        const [competency, graph, stats] = await Promise.all([
+          fetchCompetencyData(user.id, documentId, token || undefined),
+          fetchKnowledgeGraph(user.id, documentId, 1, token || undefined),
+          fetchUserStats(user.id, token || undefined)
         ])
 
         setCompetencyData(competency)
         setKnowledgeGraph(graph)
+        setUserStats(stats)
       } catch (error) {
         console.error('Error loading dashboard data:', error)
       } finally {
@@ -36,11 +51,53 @@ export default function DashboardPage() {
     }
 
     loadData()
-  }, [])
+  }, [user.id, isAuthenticated, token])
+
+  // 获取用户统计数据
+  const fetchUserStats = async (userId: number, token?: string) => {
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+
+      const response = await fetch(
+        `http://localhost:8000/api/users/${userId}/stats`,
+        { headers }
+      )
+
+      if (response.ok) {
+        return await response.json()
+      }
+    } catch (error) {
+      console.error('Error fetching user stats:', error)
+    }
+    return null
+  }
 
   const handleNodeClick = (node: any) => {
     console.log('Clicked node:', node)
     // 可以在这里添加导航到具体章节的逻辑
+  }
+
+  // 如果用户未登录，显示提示
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-semibold mb-4">学习仪表盘</h1>
+          <p className="text-gray-500 mb-6">请先登录以查看您的学习数据</p>
+          <a
+            href="/login"
+            className="px-6 py-3 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors"
+          >
+            前往登录
+          </a>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -139,10 +196,32 @@ export default function DashboardPage() {
           <h2 className="text-xl font-semibold mb-6">学习统计</h2>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {[
-              { label: '总学习时长', value: '12.5h', change: '+2.3h', trend: 'up' },
-              { label: '完成章节', value: '8/12', change: '+2', trend: 'up' },
-              { label: '平均正确率', value: '78%', change: '+5%', trend: 'up' },
-              { label: '知识点掌握', value: '65%', change: '+8%', trend: 'up' }
+              {
+                label: '完成章节',
+                value: userStats
+                  ? `${userStats.total_chapters_completed}/${userStats.total_chapters || 0}`
+                  : '-',
+                change: userStats ? `${userStats.chapter_counts?.completed || 0} 已完成` : '-',
+                trend: 'up' as const
+              },
+              {
+                label: '总体进度',
+                value: userStats ? `${Math.round(userStats.overall_progress_percentage)}%` : '-',
+                change: '当前进度',
+                trend: 'up' as const
+              },
+              {
+                label: '学习文档',
+                value: userStats ? `${userStats.total_documents_studied || 0}` : '-',
+                change: '个文档',
+                trend: 'up' as const
+              },
+              {
+                label: '认知等级',
+                value: `L${user?.cognitiveLevel || 1}`,
+                change: '当前等级',
+                trend: 'up' as const
+              }
             ].map((stat, index) => (
               <motion.div
                 key={stat.label}
@@ -153,9 +232,7 @@ export default function DashboardPage() {
               >
                 <p className="text-sm text-gray-600">{stat.label}</p>
                 <p className="text-2xl font-semibold text-black mt-2">{stat.value}</p>
-                <p className={`text-xs mt-2 ${stat.trend === 'up' ? 'text-emerald-600' : 'text-red-600'}`}>
-                  {stat.change} 本周
-                </p>
+                <p className="text-xs mt-2 text-gray-500">{stat.change}</p>
               </motion.div>
             ))}
           </div>
