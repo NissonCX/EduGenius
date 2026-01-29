@@ -5,7 +5,7 @@
  * 显示过去一段时间的学习活跃度
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
 
 interface StudyDay {
@@ -19,38 +19,35 @@ interface StudyCalendarProps {
 }
 
 export function StudyCalendar({ studyDays = [], weeks = 12 }: StudyCalendarProps) {
-  const [calendarData, setCalendarData] = useState<StudyDay[]>([])
+  // 使用 useMemo 缓存日历数据生成
+  const calendarData = useMemo(() => {
+    const data: StudyDay[] = []
+    const today = new Date()
 
-  useEffect(() => {
-    // 生成日历数据
-    const generateCalendarData = () => {
-      const data: StudyDay[] = []
-      const today = new Date()
+    for (let i = 0; i < weeks * 7; i++) {
+      const date = new Date(today)
+      date.setDate(date.getDate() - i)
 
-      for (let i = 0; i < weeks * 7; i++) {
-        const date = new Date(today)
-        date.setDate(date.getDate() - i)
+      const dateStr = date.toISOString().split('T')[0]
+      const existing = studyDays.find(d => d.date === dateStr)
 
-        const dateStr = date.toISOString().split('T')[0]
-        const existing = studyDays.find(d => d.date === dateStr)
-
-        data.push({
-          date: dateStr,
-          count: existing?.count || 0
-        })
-      }
-
-      return data.reverse()
+      data.push({
+        date: dateStr,
+        count: existing?.count || 0
+      })
     }
 
-    setCalendarData(generateCalendarData())
+    return data.reverse()
   }, [studyDays, weeks])
 
-  // 按周分组
-  const weeksData: StudyDay[][] = []
-  for (let i = 0; i < calendarData.length; i += 7) {
-    weeksData.push(calendarData.slice(i, i + 7))
-  }
+  // 按周分组（使用 useMemo 避免每次渲染都重新计算）
+  const weeksData = useMemo(() => {
+    const result: StudyDay[][] = []
+    for (let i = 0; i < calendarData.length; i += 7) {
+      result.push(calendarData.slice(i, i + 7))
+    }
+    return result
+  }, [calendarData])
 
   // 获取颜色级别
   const getColorLevel = (count: number) => {

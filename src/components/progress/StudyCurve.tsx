@@ -5,7 +5,7 @@
  * 显示学习进度和能力成长趋势
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import {
   LineChart,
@@ -33,29 +33,30 @@ export function StudyCurve({ data = [] }: StudyCurveProps) {
   const [chartData, setChartData] = useState<DataPoint[]>([])
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'all'>('week')
 
+  // 生成示例数据（使用 useMemo 避免重复生成）
+  const sampleData = useMemo(() => generateSampleData(), [])
+
+  // 根据时间范围过滤数据
+  const filteredData = useMemo(() => {
+    const useData = data.length > 0 ? data : sampleData
+
+    const now = new Date()
+    let days = 7
+
+    if (timeRange === 'week') days = 7
+    else if (timeRange === 'month') days = 30
+    else days = 90
+
+    const cutoffDate = new Date(now)
+    cutoffDate.setDate(cutoffDate.getDate() - days)
+
+    return useData.filter(d => new Date(d.date) >= cutoffDate)
+  }, [data, timeRange, sampleData])
+
+  // 初始化 chartData
   useEffect(() => {
-    // 根据时间范围过滤数据
-    const filterDataByRange = () => {
-      if (data.length === 0) {
-        // 生成示例数据
-        return generateSampleData()
-      }
-
-      const now = new Date()
-      let days = 7
-
-      if (timeRange === 'week') days = 7
-      else if (timeRange === 'month') days = 30
-      else days = 90
-
-      const cutoffDate = new Date(now)
-      cutoffDate.setDate(cutoffDate.getDate() - days)
-
-      return data.filter(d => new Date(d.date) >= cutoffDate)
-    }
-
-    setChartData(filterDataByRange())
-  }, [data, timeRange])
+    setChartData(filteredData)
+  }, [filteredData])
 
   // 生成示例数据
   const generateSampleData = () => {
