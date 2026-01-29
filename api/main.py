@@ -10,6 +10,7 @@ from app.db.database import init_db
 from app.api.endpoints.documents import router as documents_router
 from app.api.endpoints.teaching import router as teaching_router
 from app.api.endpoints.users import router as users_router
+from app.api.endpoints.quiz import router as quiz_router
 
 
 @asynccontextmanager
@@ -50,6 +51,7 @@ app.add_middleware(
 app.include_router(documents_router)
 app.include_router(teaching_router)
 app.include_router(users_router)
+app.include_router(quiz_router)
 
 
 @app.get("/")
@@ -62,6 +64,8 @@ async def root():
         "endpoints": {
             "documents": "/api/documents",
             "teaching": "/api/teaching",
+            "users": "/api/users",
+            "quiz": "/api/quiz",
             "health": "/health"
         },
         "features": {

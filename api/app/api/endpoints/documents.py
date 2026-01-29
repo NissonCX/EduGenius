@@ -193,36 +193,143 @@ async def get_document(
     return document
 
 
-@router.get("/{document_id}/chapters", response_model=list[ChapterResponse])
+@router.get("/{document_id}/chapters")
 async def get_document_chapters(
     document_id: int,
-    user_email: str = DEFAULT_USER_EMAIL,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Get chapter list with progress status for a document.
+    Get chapter list with progress and lock status for a document.
+
+    解锁规则：
+    - 第一章默认解锁
+    - 后续章节需要满足前置条件：
+      1. 前一章完成度 >= 70%
+      2. 前一章测试分数 >= 60%（如果有测试记录）
+      3. 前一章学习时间 >= 10 分钟
     """
-    # Get user
-    user, _ = await get_or_create_user(db, user_email, DEFAULT_USERNAME)
+    from sqlalchemy import select
+    from app.models.document import Document, Progress
 
-    # Get progress entries
-    progress_entries = await get_user_progress_for_document(db, user.id, document_id)
-
-    if not progress_entries:
+    # 验证文档存在
+    doc_result = await db.execute(select(Document).where(Document.id == document_id))
+    document = doc_result.scalar_one_or_none()
+    if not document:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="未找到章节信息"
+            detail="文档不存在"
         )
 
-    return [
-        ChapterResponse(
-            chapter_number=p.chapter_number,
-            chapter_title=p.chapter_title,
-            status=p.status,
-            completion_percentage=p.completion_percentage
-        )
-        for p in progress_entries
-    ]
+    # 获取所有进度记录
+    progress_result = await db.execute(
+        select(Progress).where(
+            Progress.user_id == current_user.id,
+            Progress.document_id == document_id
+        ).order_by(Progress.chapter_number)
+    )
+    all_progress = progress_result.scalars().all()
+
+    # 解锁阈值配置
+    UNLOCK_CONFIG = {
+        "completion_threshold": 0.7,  # 70% 完成度
+        "quiz_score_threshold": 0.6,  # 60% 测试分数
+        "min_time_minutes": 10  # 最少10分钟学习时间
+    }
+
+    chapters = []
+
+    for progress in all_progress:
+        # 判断章节状态
+        is_locked = False
+        lock_reason = None
+
+        if progress.chapter_number > 1:
+            # 查找前一章的进度
+            prev_progress = next(
+                (p for p in all_progress if p.chapter_number == progress.chapter_number - 1),
+                None
+            )
+
+            if prev_progress:
+                # 检查解锁条件
+                conditions_met = []
+                conditions_not_met = []
+
+                # 检查完成度
+                if prev_progress.completion_percentage >= UNLOCK_CONFIG["completion_threshold"] * 100:
+                    conditions_met.append(f"完成度 {prev_progress.completion_percentage:.0f}%")
+                else:
+                    conditions_not_met.append(
+                        f"前一章完成度需达到 {UNLOCK_CONFIG['completion_threshold'] * 100:.0f}%（当前 {prev_progress.completion_percentage:.0f}%）"
+                    )
+
+                # 检查学习时间
+                if prev_progress.time_spent_minutes >= UNLOCK_CONFIG["min_time_minutes"]:
+                    conditions_met.append(f"学习时间 {prev_progress.time_spent_minutes} 分钟")
+                else:
+                    conditions_not_met.append(
+                        f"前一章学习时间需达到 {UNLOCK_CONFIG['min_time_minutes']} 分钟（当前 {prev_progress.time_spent_minutes} 分钟）"
+                    )
+
+                # 检查测试分数（如果有测试记录）
+                if prev_progress.quiz_attempts > 0:
+                    if prev_progress.quiz_success_rate >= UNLOCK_CONFIG["quiz_score_threshold"]:
+                        conditions_met.append(f"测试分数 {prev_progress.quiz_success_rate * 100:.0f}%")
+                    else:
+                        conditions_not_met.append(
+                            f"前一章测试分数需达到 {UNLOCK_CONFIG['quiz_score_threshold'] * 100:.0f}%（当前 {prev_progress.quiz_success_rate * 100:.0f}%）"
+                        )
+
+                # 如果所有条件都满足，则解锁
+                is_locked = len(conditions_not_met) > 0
+
+                if is_locked:
+                    lock_reason = f"需完成前一章：{'; '.join(conditions_not_met)}"
+            else:
+                # 没有前一章记录，锁定
+                is_locked = True
+                lock_reason = "需先完成前一章"
+
+        # 如果状态为 locked，强制锁定
+        if progress.status == "locked":
+            is_locked = True
+            lock_reason = "此章节已被锁定"
+
+        # 确定状态图标
+        if is_locked:
+            status_icon = "🔒"
+            status_text = "未解锁"
+        elif progress.status == "completed":
+            status_icon = "✅"
+            status_text = "已完成"
+        elif progress.status == "in_progress":
+            status_icon = "🔓"
+            status_text = "学习中"
+        else:
+            status_icon = "🔓"
+            status_text = "未开始"
+
+        chapters.append({
+            "chapter_number": progress.chapter_number,
+            "chapter_title": progress.chapter_title or f"第 {progress.chapter_number} 章",
+            "status": progress.status,
+            "completion_percentage": progress.completion_percentage,
+            "is_locked": is_locked,
+            "lock_reason": lock_reason,
+            "status_icon": status_icon,
+            "status_text": status_text,
+            "time_spent_minutes": progress.time_spent_minutes,
+            "quiz_attempts": progress.quiz_attempts,
+            "quiz_success_rate": progress.quiz_success_rate
+        })
+
+    return {
+        "document_id": document_id,
+        "document_title": document.title or document.filename,
+        "total_chapters": len(chapters),
+        "chapters": chapters
+    }
 
 
 @router.get("/health")

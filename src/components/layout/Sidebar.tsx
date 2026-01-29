@@ -1,6 +1,6 @@
 'use client'
 
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   FileText,
   Upload,
@@ -11,12 +11,13 @@ import {
   Lock,
   BarChart3,
   Home,
-  MessageSquare
+  MessageSquare,
+  AlertCircle
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 
 interface Chapter {
@@ -24,6 +25,8 @@ interface Chapter {
   title: string
   status: 'completed' | 'in-progress' | 'locked'
   progress: number
+  is_locked?: boolean
+  lock_reason?: string
 }
 
 interface SidebarProps {
@@ -33,8 +36,10 @@ interface SidebarProps {
 export function Sidebar({ className }: SidebarProps) {
   const [isDragOver, setIsDragOver] = useState(false)
   const pathname = usePathname()
+  const router = useRouter()
   const [chapters, setChapters] = useState<Chapter[]>([])
   const [isLoadingChapters, setIsLoadingChapters] = useState(true)
+  const [lockToast, setLockToast] = useState<{ show: boolean; message: string }>({ show: false, message: '' })
 
   // 使用 useAuth hook
   const { user, isAuthenticated, logout } = useAuth()
@@ -101,6 +106,25 @@ export function Sidebar({ className }: SidebarProps) {
   const handleLogout = () => {
     logout()
     window.location.href = '/'
+  }
+
+  const handleChapterClick = (chapter: Chapter) => {
+    if (chapter.is_locked || chapter.status === 'locked') {
+      // 显示锁定提示
+      setLockToast({
+        show: true,
+        message: chapter.lock_reason || '此章节尚未解锁，请先完成前置章节。'
+      })
+
+      // 3秒后自动隐藏提示
+      setTimeout(() => {
+        setLockToast({ show: false, message: '' })
+      }, 3000)
+      return
+    }
+
+    // 跳转到学习页面
+    router.push(`/study?chapter=${chapter.id}`)
   }
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -288,9 +312,27 @@ export function Sidebar({ className }: SidebarProps) {
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-medium text-gray-500">章节目录</h2>
           <span className="text-xs text-gray-500">
-            {chapters.filter(c => c.status !== 'locked').length}/{chapters.length || 0}
+            {chapters.filter(c => !c.is_locked && c.status !== 'locked').length}/{chapters.length || 0}
           </span>
         </div>
+
+        {/* 锁定提示 Toast */}
+        <AnimatePresence>
+          {lockToast.show && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-2"
+            >
+              <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-amber-900">章节未解锁</p>
+                <p className="text-xs text-amber-700 mt-1">{lockToast.message}</p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <nav className="space-y-1">
           {isLoadingChapters ? (
@@ -312,19 +354,26 @@ export function Sidebar({ className }: SidebarProps) {
                 transition={{ duration: 0.2, delay: index * 0.05 }}
               >
                 <button
+                  onClick={() => handleChapterClick(chapter)}
                   className={cn(
                     "w-full flex items-center justify-between p-3 rounded-xl transition-all duration-200",
                     "border border-transparent hover:border-gray-200 hover:shadow-sm",
                     chapter.status === 'in-progress' && "border-gray-200 bg-gray-50/50",
-                    chapter.status === 'locked' && "opacity-50 cursor-not-allowed"
+                    (chapter.is_locked || chapter.status === 'locked') && "opacity-60 hover:border-gray-100"
                   )}
-                  disabled={chapter.status === 'locked'}
                 >
                   <div className="flex items-center space-x-3">
                     <ChapterIcon status={chapter.status} />
-                    <span className="text-sm text-left">{chapter.title}</span>
+                    <div className="text-left">
+                      <span className="text-sm">{chapter.title}</span>
+                      {(chapter.is_locked || chapter.status === 'locked') && chapter.lock_reason && (
+                        <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">
+                          {chapter.lock_reason}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  {chapter.status !== 'locked' && (
+                  {!(chapter.is_locked || chapter.status === 'locked') && (
                     <ChevronRight className="w-4 h-4 text-gray-400" />
                   )}
                 </button>

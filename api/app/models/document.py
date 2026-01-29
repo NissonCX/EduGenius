@@ -133,6 +133,7 @@ class QuizAttempt(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     progress_id = Column(Integer, ForeignKey("progress.id"), nullable=False)
+    question_id = Column(Integer, ForeignKey("questions.id"), nullable=False)
 
     # 题目信息
     question_text = Column(Text, nullable=False)
@@ -149,3 +150,41 @@ class QuizAttempt(Base):
 
     def __repr__(self):
         return f"<QuizAttempt(id={self.id}, correct={self.is_correct})>"
+
+
+class Question(Base):
+    """题目数据库模型"""
+    __tablename__ = "questions"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # 关联文档和章节
+    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False)
+    chapter_number = Column(Integer, nullable=False)
+
+    # 题目基本信息
+    question_type = Column(String(50), nullable=False)  # 'choice', 'fill_blank', 'essay'
+    question_text = Column(Text, nullable=False)
+
+    # 选项（JSON格式，用于选择题）
+    # 格式: {"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}
+    options = Column(Text)
+
+    # 答案和解析
+    correct_answer = Column(String(500), nullable=False)
+    explanation = Column(Text)  # 题目解析
+
+    # 难度和分类
+    difficulty = Column(Integer, default=3)  # 1-5难度
+    competency_dimension = Column(String(50))  # 能力维度: comprehension, logic, terminology, memory, application, stability
+
+    # 元数据
+    created_by = Column(String(50), default="AI")  # AI生成或人工创建
+    is_active = Column(Integer, default=1)  # 是否启用
+
+    # 时间戳
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    def __repr__(self):
+        return f"<Question(id={self.id}, type={self.question_type}, chapter={self.chapter_number})>"
