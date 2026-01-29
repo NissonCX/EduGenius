@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { CompetencyRadar } from '@/components/charts/CompetencyRadar'
 import { KnowledgeConstellation } from '@/components/charts/KnowledgeConstellation'
+import { StudyCalendar, StudyCurve } from '@/components/progress'
 import { fetchCompetencyData, fetchKnowledgeGraph } from '@/lib/api'
 import { useAuth } from '@/contexts/AuthContext'
 
@@ -177,6 +178,38 @@ export default function DashboardPage() {
           </div>
         </section>
       )}
+
+      {/* Progress Tracking */}
+      <section className="container-x py-8">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.15 }}
+        >
+          <h2 className="text-xl font-semibold mb-6">学习进度追踪</h2>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* 学习日历热力图 */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.3 }}
+              className="p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-200"
+            >
+              <StudyCalendar weeks={12} />
+            </motion.div>
+
+            {/* 学习曲线 */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.3, delay: 0.1 }}
+              className="p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-200"
+            >
+              <StudyCurve />
+            </motion.div>
+          </div>
+        </motion.div>
+      </section>
 
       {/* Stats Overview */}
       <section className="container-x py-8">
