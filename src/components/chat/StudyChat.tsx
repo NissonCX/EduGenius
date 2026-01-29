@@ -386,15 +386,6 @@ export function StudyChat({
         {isStreaming && streamingContent && (
           <StreamingMessage content={streamingContent} isComplete={false} />
         )}
-                  <span className="inline-block w-0.5 h-4 bg-gray-800 animate-pulse ml-0.5" />
-                </div>
-              </div>
-              <p className="text-xs text-gray-500 mt-1.5 ml-2">
-                正在输入...
-              </p>
-            </div>
-          </motion.div>
-        )}
 
         {/* 正在思考指示器 */}
         {isStreaming && !streamingContent && (
