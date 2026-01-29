@@ -982,3 +982,127 @@ async def delete_document(
         }
     }
 
+
+@router.get("/{document_id}/status")
+async def get_document_status(
+    document_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    获取文档处理状态和进度
+
+    返回详细的处理进度，用于前端轮询更新
+    """
+    from sqlalchemy import select, text
+
+    # 验证文档存在且属于当前用户
+    result = await db.execute(
+        select(Document).where(Document.id == document_id)
+    )
+    document = result.scalar_one_or_none()
+
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="文档不存在"
+        )
+
+    if document.uploaded_by != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="无权限访问此文档"
+        )
+
+    # 获取处理状态
+    status_query = text("""
+        SELECT
+            id,
+            filename,
+            title,
+            processing_status,
+            has_text_layer,
+            ocr_confidence,
+            current_page,
+            total_pages,
+            total_chapters,
+            uploaded_at
+        FROM documents
+        WHERE id = :document_id
+    """)
+
+    result = await db.execute(status_query, {'document_id': document_id})
+    row = result.fetchone()
+
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="文档状态信息不存在"
+        )
+
+    # 解析状态
+    status = row[3] or 'pending'
+    has_text_layer = bool(row[4])
+    ocr_confidence = row[5] or 0.0
+    current_page = row[6] or 0
+    total_pages = row[7] or 0
+    total_chapters = row[8] or 0
+
+    # 计算进度百分比
+    progress_percentage = 0
+    stage = ""
+    stage_message = ""
+
+    if status == 'pending':
+        progress_percentage = 0
+        stage = "等待处理"
+        stage_message = "文档已上传，等待开始处理..."
+
+    elif status == 'processing':
+        progress_percentage = 25
+        stage = "正在提取文本"
+        stage_message = "正在从PDF中提取文本内容..."
+
+    elif status == 'ocr_processing':
+        if total_pages > 0:
+            progress_percentage = min(90, int((current_page / total_pages) * 100))
+        else:
+            progress_percentage = 50
+        stage = "正在OCR识别"
+        stage_message = f"正在使用AI识别第 {current_page}/{total_pages} 页..."
+
+    elif status == 'completed':
+        progress_percentage = 100
+        stage = "处理完成"
+        stage_message = "文档已成功处理并可以使用"
+
+    elif status == 'failed':
+        progress_percentage = 0
+        stage = "处理失败"
+        stage_message = "文档处理失败，请尝试重新上传更清晰的文件"
+
+    # 构建响应
+    response = {
+        "document_id": document_id,
+        "filename": row[1],
+        "title": row[2],
+        "status": status,
+        "stage": stage,
+        "stage_message": stage_message,
+        "progress_percentage": progress_percentage,
+        "has_text_layer": has_text_layer,
+        "ocr_confidence": ocr_confidence,
+        "current_page": current_page,
+        "total_pages": total_pages,
+        "total_chapters": total_chapters,
+        "is_scan": not has_text_layer,
+        "uploaded_at": row[10].isoformat() if row[10] else None
+    }
+
+    # 添加提示信息
+    if status == 'completed' and not has_text_layer:
+        response['warning'] = "此文档通过OCR识别，建议核对专业术语和公式"
+        response['ocr_notice'] = "扫描件识别准确率约85-95%，重要内容请手动核对"
+
+    return response
+

@@ -1,0 +1,1 @@
+export { SmartUpload } from './SmartUpload'
