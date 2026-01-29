@@ -1,6 +1,5 @@
 'use client'
 
-import { motion } from 'framer-motion'
 import {
   FileText,
   Upload,
@@ -51,7 +50,7 @@ export function Sidebar({ className }: SidebarProps) {
           const progressData = await response.json()
           // 计算总体进度
           if (progressData.length > 0) {
-            const avgProgress = progressData.reduce((acc: number, p: any) => 
+            const avgProgress = progressData.reduce((acc: number, p: any) =>
               acc + p.completion_percentage, 0) / progressData.length
             setOverallProgress(Math.round(avgProgress))
           }
@@ -62,7 +61,7 @@ export function Sidebar({ className }: SidebarProps) {
     }
 
     loadProgress()
-  }, [user.id, isAuthenticated, user.token])
+  }, [user.id, isAuthenticated])
 
   const navItems = [
     { href: '/', icon: Home, label: '首页' },
@@ -108,11 +107,7 @@ export function Sidebar({ className }: SidebarProps) {
     )}>
       {/* Header */}
       <div className="p-6 border-b border-gray-200">
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-        >
+        <div>
           <div className="flex items-center justify-between mb-2">
             <div>
               <h1 className="text-xl font-semibold text-balance">EduGenius</h1>
@@ -156,7 +151,7 @@ export function Sidebar({ className }: SidebarProps) {
               </div>
             )}
           </div>
-        </motion.div>
+        </div>
       </div>
 
       {/* Navigation */}
@@ -188,7 +183,7 @@ export function Sidebar({ className }: SidebarProps) {
       {/* File Upload Area */}
       <div className="p-4">
         <Link href="/documents">
-          <motion.div
+          <div
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
@@ -196,17 +191,11 @@ export function Sidebar({ className }: SidebarProps) {
               "card-base p-6 cursor-pointer transition-all duration-200",
               isDragOver && "border-blue-500 shadow-md"
             )}
-            whileHover={{ scale: 1.01, boxShadow: "0 4px 12px rgba(0,0,0,0.08)" }}
-            whileTap={{ scale: 0.99 }}
           >
             <div className="flex flex-col items-center text-center space-y-3">
-              <motion.div
-                className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center"
-                whileHover={{ rotate: 180 }}
-                transition={{ duration: 0.3 }}
-              >
+              <div className="w-12 h-12 rounded-full bg-gray-50 flex items-center justify-center">
                 <Upload className="w-5 h-5 text-black" />
-              </motion.div>
+              </div>
               <div>
                 <p className="text-sm font-medium">上传教材</p>
                 <p className="text-xs text-gray-500 mt-1">
@@ -214,18 +203,13 @@ export function Sidebar({ className }: SidebarProps) {
                 </p>
               </div>
             </div>
-          </motion.div>
+          </div>
         </Link>
       </div>
 
       {/* Progress Ring */}
       <div className="p-4">
-        <motion.div
-          className="card-base p-4"
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.2 }}
-        >
+        <div className="card-base p-4">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium">学习进度</p>
@@ -239,30 +223,22 @@ export function Sidebar({ className }: SidebarProps) {
                 strokeWidth="0.5"
                 className="text-gray-200"
               />
-              <motion.path
+              <path
                 d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"
                 strokeDasharray={`${overallProgress}, 100`}
                 className="text-black"
-                initial={{ strokeDasharray: "0, 100" }}
-                animate={{ strokeDasharray: `${overallProgress}, 100` }}
-                transition={{ duration: 0.5, ease: "easeOut" }}
               />
             </svg>
           </div>
-        </motion.div>
+        </div>
       </div>
 
       {/* 学习提示 */}
       <div className="flex-1 px-4 pb-4">
-        <motion.div
-          className="card-base p-4"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2 }}
-        >
+        <div className="card-base p-4">
           <div className="text-center">
             <BookOpen className="w-8 h-8 text-gray-400 mx-auto mb-3" />
             <p className="text-sm font-medium text-gray-900 mb-2">开始学习</p>
@@ -281,7 +257,7 @@ export function Sidebar({ className }: SidebarProps) {
               </Link>
             )}
           </div>
-        </motion.div>
+        </div>
       </div>
     </aside>
   )

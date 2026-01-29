@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 
 interface User {
@@ -199,14 +199,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return authState.isAuthenticated && authState.user.id !== null
   }, [authState.isAuthenticated, authState.user.id])
 
-  const value: AuthContextType = {
+  // 使用 useMemo 缓存 context value，避免不必要的重新渲染
+  const value = useMemo<AuthContextType>(() => ({
     ...authState,
     login,
     logout,
     updateUser,
     getAuthHeaders,
     checkAuth
-  }
+  }), [authState, login, logout, updateUser, getAuthHeaders, checkAuth])
 
   return (
     <AuthContext.Provider value={value}>

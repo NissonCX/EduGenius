@@ -90,7 +90,7 @@ export function StreamingMessage({ content, isComplete = false }: StreamingMessa
                 exit={{ opacity: 0 }}
                 transition={{
                   duration: 0.8,
-                  repeat: Infinity,
+                  repeat: 1,
                   ease: "easeInOut"
                 }}
                 className="inline-block w-0.5 h-4 bg-black ml-1 align-middle"

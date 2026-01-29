@@ -33,7 +33,7 @@ export function TypingIndicator() {
               }}
               transition={{
                 duration: 0.8,
-                repeat: Infinity,
+                repeat: 1,
                 delay: i * 0.15,
                 ease: 'easeInOut'
               }}

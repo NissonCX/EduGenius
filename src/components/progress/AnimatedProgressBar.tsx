@@ -70,7 +70,7 @@ export function AnimatedProgressBar({
             transition={{
               duration: 1.5,
               ease: 'linear',
-              repeat: Infinity
+              repeat: 1
             }}
             style={{
               background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)',

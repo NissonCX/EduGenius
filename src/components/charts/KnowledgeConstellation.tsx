@@ -11,7 +11,6 @@
  */
 
 import { useEffect, useRef, useState, useMemo } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
 import { Search, Filter, ChevronDown, ChevronUp, BookOpen, Clock, Lock } from 'lucide-react'
 
 interface KnowledgeNode {
@@ -298,24 +297,17 @@ export function KnowledgeConstellation({
         </div>
 
         {/* 搜索框 */}
-        <AnimatePresence>
-          {showSearch && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="mt-3"
-            >
-              <input
-                type="text"
-                placeholder="搜索知识点..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none"
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {showSearch && (
+          <div className="mt-3">
+            <input
+              type="text"
+              placeholder="搜索知识点..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none"
+            />
+          </div>
+        )}
 
         {/* 过滤状态指示 */}
         {filterStatus !== 'all' && (
@@ -413,11 +405,8 @@ export function KnowledgeConstellation({
               const opacity = Math.max(0.03, link.strength * 0.15)
 
               return (
-                <motion.line
-                  key={i}
-                  initial={{ pathLength: 0, opacity: 0 }}
-                  animate={{ pathLength: 1, opacity: 1 }}
-                  transition={{ duration: 0.8, delay: i * 0.1 }}
+                <line
+                  key={`${link.source}-${link.target}`}
                   x1={sourcePos.x}
                   y1={sourcePos.y}
                   x2={targetPos.x}
@@ -442,11 +431,8 @@ export function KnowledgeConstellation({
               const hasChildren = node.children && node.children.length > 0
 
               return (
-                <motion.g
+                <g
                   key={node.id}
-                  initial={{ scale: 0, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ duration: 0.4, delay: i * 0.08 }}
                   style={{ cursor: 'pointer' }}
                   onMouseEnter={() => setHoverNode(node)}
                   onMouseLeave={() => setHoverNode(null)}
@@ -457,58 +443,40 @@ export function KnowledgeConstellation({
                     onNodeClick?.(node)
                   }}
                 >
-                  {/* 已完成节点的脉冲效果 */}
-                  {node.status === 'completed' && (
+                  {/* 已完成节点的脉冲效果 - 仅在悬停时显示 */}
+                  {node.status === 'completed' && isHovered && (
                     <>
-                      <motion.circle
+                      <circle
                         cx={pos.x}
                         cy={pos.y}
                         r={size * 1.5}
                         fill={style.glow}
-                        animate={{
-                          opacity: [0.3, 0.6, 0.3],
-                          r: [size * 1.3, size * 1.6, size * 1.3]
-                        }}
-                        transition={{
-                          duration: 2,
-                          repeat: Infinity,
-                          ease: 'easeInOut'
-                        }}
                       />
-                      <motion.circle
+                      <circle
                         cx={pos.x}
                         cy={pos.y}
                         r={size * 1.8}
                         fill="transparent"
                         stroke="rgba(0, 0, 0, 0.1)"
                         strokeWidth={1}
-                        animate={{
-                          opacity: [0, 0.5, 0],
-                          r: [size * 1.5, size * 2.2, size * 1.5]
-                        }}
-                        transition={{
-                          duration: 3,
-                          repeat: Infinity,
-                          ease: 'easeOut'
-                        }}
                       />
                     </>
                   )}
 
                   {/* 主圆圈 */}
-                  <motion.circle
+                  <circle
                     cx={pos.x}
                     cy={pos.y}
                     r={isHovered ? size * 1.15 : size}
                     fill={style.fill}
                     stroke={isHovered ? '#000' : 'rgba(255, 255, 255, 0.9)'}
                     strokeWidth={isHovered ? 2 : 1}
-                    transition={{ duration: 0.2 }}
+                    style={{ transition: 'all 0.2s ease' }}
                   />
 
                   {/* 进行中节点的内圈 */}
                   {node.status === 'in-progress' && (
-                    <motion.circle
+                    <circle
                       cx={pos.x}
                       cy={pos.y}
                       r={size * 0.4}
@@ -562,7 +530,7 @@ export function KnowledgeConstellation({
                   >
                     {node.label}
                   </text>
-                </motion.g>
+                </g>
               )
             })}
           </svg>
@@ -577,115 +545,99 @@ export function KnowledgeConstellation({
       )}
 
       {/* 增强的悬停信息卡片 */}
-      <AnimatePresence>
-        {hoverNode && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
-            className="mt-4 p-4 bg-white border border-gray-200 rounded-xl shadow-sm"
-          >
-            <div className="flex items-start justify-between">
-              <div className="flex items-start gap-3 flex-1">
-                <div
-                  className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-                  style={{
-                    backgroundColor: legend.find(l => l.status === hoverNode.status)?.color + '20'
-                  }}
-                >
-                  {hoverNode.status === 'completed' && (
-                    <span className="text-lg">✓</span>
-                  )}
-                  {hoverNode.status === 'in-progress' && (
-                    <BookOpen className="w-5 h-5" style={{ color: legend.find(l => l.status === 'in-progress')?.color }} />
-                  )}
-                  {hoverNode.status === 'locked' && (
-                    <Lock className="w-5 h-5 text-gray-400" />
-                  )}
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-semibold text-base">{hoverNode.label}</h4>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    {legend.find(l => l.status === hoverNode.status)?.label}
-                  </p>
-                  {hoverNode.description && (
-                    <p className="text-sm text-gray-600 mt-2">{hoverNode.description}</p>
-                  )}
+      {hoverNode && (
+        <div className="mt-4 p-4 bg-white border border-gray-200 rounded-xl shadow-sm">
+          <div className="flex items-start gap-3">
+            <div
+              className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{
+                backgroundColor: legend.find(l => l.status === hoverNode.status)?.color + '20'
+              }}
+            >
+              {hoverNode.status === 'completed' && (
+                <span className="text-lg">✓</span>
+              )}
+              {hoverNode.status === 'in-progress' && (
+                <BookOpen className="w-5 h-5" style={{ color: legend.find(l => l.status === 'in-progress')?.color }} />
+              )}
+              {hoverNode.status === 'locked' && (
+                <Lock className="w-5 h-5 text-gray-400" />
+              )}
+            </div>
+            <div className="flex-1">
+              <h4 className="font-semibold text-base">{hoverNode.label}</h4>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {legend.find(l => l.status === hoverNode.status)?.label}
+              </p>
+              {hoverNode.description && (
+                <p className="text-sm text-gray-600 mt-2">{hoverNode.description}</p>
+              )}
 
-                  {/* 进度和时间信息 */}
-                  <div className="mt-3 flex flex-wrap gap-4">
-                    {hoverNode.progress !== undefined && hoverNode.status === 'in-progress' && (
-                      <div className="flex items-center gap-2 text-xs text-gray-600">
-                        <div className="w-16 bg-gray-200 rounded-full h-1.5">
-                          <div
-                            className="bg-black h-1.5 rounded-full transition-all"
-                            style={{ width: `${hoverNode.progress}%` }}
-                          />
-                        </div>
-                        <span>{hoverNode.progress}%</span>
-                      </div>
-                    )}
-                    {hoverNode.timeSpent && (
-                      <div className="flex items-center gap-1 text-xs text-gray-600">
-                        <Clock className="w-3 h-3" />
-                        <span>{hoverNode.timeSpent} 分钟</span>
-                      </div>
-                    )}
+              {/* 进度和时间信息 */}
+              <div className="mt-3 flex flex-wrap gap-4">
+                {hoverNode.progress !== undefined && hoverNode.status === 'in-progress' && (
+                  <div className="flex items-center gap-2 text-xs text-gray-600">
+                    <div className="w-16 bg-gray-200 rounded-full h-1.5">
+                      <div
+                        className="bg-black h-1.5 rounded-full transition-all"
+                        style={{ width: `${hoverNode.progress}%` }}
+                      />
+                    </div>
+                    <span>{hoverNode.progress}%</span>
                   </div>
+                )}
+                {hoverNode.timeSpent && (
+                  <div className="flex items-center gap-1 text-xs text-gray-600">
+                    <Clock className="w-3 h-3" />
+                    <span>{hoverNode.timeSpent} 分钟</span>
+                  </div>
+                )}
+              </div>
 
-                  {/* 子节点列表 */}
-                  {hoverNode.children && hoverNode.children.length > 0 && (
-                    <div className="mt-3">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          toggleNodeExpansion(hoverNode.id, e)
-                        }}
-                        className="flex items-center gap-1 text-xs text-gray-600 hover:text-black transition-colors"
-                      >
-                        {expandedNodes.has(hoverNode.id) ? (
-                          <ChevronUp className="w-3 h-3" />
-                        ) : (
-                          <ChevronDown className="w-3 h-3" />
-                        )}
-                        <span>{hoverNode.children.length} 个子知识点</span>
-                      </button>
-                      <AnimatePresence>
-                        {expandedNodes.has(hoverNode.id) && (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            exit={{ opacity: 0, height: 0 }}
-                            className="mt-2 space-y-1 pl-2"
-                          >
-                            {hoverNode.children.map((child) => (
-                              <div
-                                key={child.id}
-                                className="flex items-center gap-2 text-xs py-1 px-2 rounded bg-gray-50"
-                              >
-                                <div
-                                  className={`w-1.5 h-1.5 rounded-full ${
-                                    child.status === 'completed'
-                                      ? 'bg-black'
-                                      : child.status === 'in-progress'
-                                      ? 'bg-gray-400'
-                                      : 'bg-gray-300'
-                                  }`}
-                                />
-                                <span className="text-gray-700">{child.label}</span>
-                              </div>
-                            ))}
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+              {/* 子节点列表 */}
+              {hoverNode.children && hoverNode.children.length > 0 && (
+                <div className="mt-3">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggleNodeExpansion(hoverNode.id, e)
+                    }}
+                    className="flex items-center gap-1 text-xs text-gray-600 hover:text-black transition-colors"
+                  >
+                    {expandedNodes.has(hoverNode.id) ? (
+                      <ChevronUp className="w-3 h-3" />
+                    ) : (
+                      <ChevronDown className="w-3 h-3" />
+                    )}
+                    <span>{hoverNode.children.length} 个子知识点</span>
+                  </button>
+                  {expandedNodes.has(hoverNode.id) && (
+                    <div className="mt-2 space-y-1 pl-2">
+                      {hoverNode.children.map((child) => (
+                        <div
+                          key={child.id}
+                          className="flex items-center gap-2 text-xs py-1 px-2 rounded bg-gray-50"
+                        >
+                          <div
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              child.status === 'completed'
+                                ? 'bg-black'
+                                : child.status === 'in-progress'
+                                ? 'bg-gray-400'
+                                : 'bg-gray-300'
+                            }`}
+                          />
+                          <span className="text-gray-700">{child.label}</span>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
-              </div>
+              )}
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+        </div>
+      )}
 
       {/* 统计信息 */}
       <div className="mt-4 grid grid-cols-3 gap-2">
@@ -694,16 +646,13 @@ export function KnowledgeConstellation({
           { count: nodes.filter(n => n.status === 'in-progress').length, label: '学习中', color: 'bg-gray-100 text-gray-700' },
           { count: nodes.filter(n => n.status === 'locked').length, label: '未解锁', color: 'bg-gray-50 text-gray-600 border border-gray-200' }
         ].map((stat, i) => (
-          <motion.div
+          <div
             key={i}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: i * 0.05 }}
             className={`flex flex-col items-center gap-1 py-3 rounded-xl text-center ${stat.color}`}
           >
             <span className="text-xl font-semibold">{stat.count}</span>
             <span className="text-xs">{stat.label}</span>
-          </motion.div>
+          </div>
         ))}
       </div>
     </div>
