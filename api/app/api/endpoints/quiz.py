@@ -163,84 +163,98 @@ async def submit_answer(
     """
     提交单个题目的答案
     """
-    # 获取题目信息
-    question_result = await db.execute(
-        select(Question).where(Question.id == submission.question_id)
-    )
-    question = question_result.scalar_one_or_none()
-
-    if not question:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="题目不存在"
+    try:
+        # 获取题目信息
+        question_result = await db.execute(
+            select(Question).where(Question.id == submission.question_id)
         )
+        question = question_result.scalar_one_or_none()
 
-    # 验证答案
-    is_correct = submission.user_answer.strip().upper() == question.correct_answer.strip().upper()
+        if not question:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="题目不存在"
+            )
 
-    # 获取或创建 progress 记录
-    progress_result = await db.execute(
-        select(Progress).where(
-            and_(
-                Progress.user_id == submission.user_id,
-                Progress.document_id == question.document_id,
-                Progress.chapter_number == question.chapter_number
+        # 验证答案
+        is_correct = submission.user_answer.strip().upper() == question.correct_answer.strip().upper()
+
+        # 获取或创建 progress 记录
+        progress_result = await db.execute(
+            select(Progress).where(
+                and_(
+                    Progress.user_id == submission.user_id,
+                    Progress.document_id == question.document_id,
+                    Progress.chapter_number == question.chapter_number
+                )
             )
         )
-    )
-    progress = progress_result.scalar_one_or_none()
+        progress = progress_result.scalar_one_or_none()
 
-    if not progress:
-        # 创建 progress 记录
-        progress = Progress(
+        if not progress:
+            # 创建 progress 记录
+            progress = Progress(
+                user_id=submission.user_id,
+                document_id=question.document_id,
+                chapter_number=question.chapter_number,
+                status="in_progress",
+                cognitive_level_assigned=current_user.cognitive_level
+            )
+            db.add(progress)
+            await db.flush()  # 获取 ID
+
+        # 记录答题尝试（使用 competency_dimension 而不是重新分类）
+        attempt = QuizAttempt(
             user_id=submission.user_id,
-            document_id=question.document_id,
-            chapter_number=question.chapter_number,
-            status="in_progress",
-            cognitive_level_assigned=current_user.cognitive_level
+            progress_id=progress.id,
+            question_id=question.id,
+            question_text=question.question_text,
+            user_answer=submission.user_answer,
+            correct_answer=question.correct_answer,
+            is_correct=1 if is_correct else 0,
+            time_spent_seconds=submission.time_spent_seconds
         )
-        db.add(progress)
-        await db.flush()  # 获取 ID
+        db.add(attempt)
 
-    # 记录答题尝试（使用 competency_dimension 而不是重新分类）
-    attempt = QuizAttempt(
-        user_id=submission.user_id,
-        progress_id=progress.id,
-        question_id=question.id,
-        question_text=question.question_text,
-        user_answer=submission.user_answer,
-        correct_answer=question.correct_answer,
-        is_correct=1 if is_correct else 0,
-        time_spent_seconds=submission.time_spent_seconds
-    )
-    db.add(attempt)
+        # 更新 progress 统计
+        all_attempts_result = await db.execute(
+            select(QuizAttempt).where(QuizAttempt.progress_id == progress.id)
+        )
+        all_attempts = all_attempts_result.scalars().all()
 
-    # 更新 progress 统计
-    all_attempts_result = await db.execute(
-        select(QuizAttempt).where(QuizAttempt.progress_id == progress.id)
-    )
-    all_attempts = all_attempts_result.scalars().all()
+        total_attempts = len(all_attempts) + 1  # 包括当前这次
+        correct_attempts = sum(1 for a in all_attempts if a.is_correct == 1) + (1 if is_correct else 0)
+        progress.quiz_attempts = total_attempts
+        progress.quiz_success_rate = correct_attempts / total_attempts if total_attempts > 0 else 0.0
 
-    total_attempts = len(all_attempts)
-    correct_attempts = sum(1 for a in all_attempts if a.is_correct == 1)
-    progress.quiz_attempts = total_attempts
-    progress.quiz_success_rate = correct_attempts / total_attempts if total_attempts > 0 else 0.0
+        # 提交事务
+        await db.commit()
+        await db.refresh(attempt)
 
-    await db.commit()
+        # 生成反馈
+        if is_correct:
+            feedback = "✅ 回答正确！"
+        else:
+            feedback = f"❌ 回答错误。正确答案是：{question.correct_answer}"
 
-    # 生成反馈
-    if is_correct:
-        feedback = "✅ 回答正确！"
-    else:
-        feedback = f"❌ 回答错误。正确答案是：{question.correct_answer}"
-
-    return QuizSubmitResponse(
-        is_correct=is_correct,
-        correct_answer=question.correct_answer,
-        explanation=question.explanation,
-        feedback=feedback,
-        competency_dimension=question.competency_dimension
-    )
+        return QuizSubmitResponse(
+            is_correct=is_correct,
+            correct_answer=question.correct_answer,
+            explanation=question.explanation,
+            feedback=feedback,
+            competency_dimension=question.competency_dimension
+        )
+    
+    except HTTPException:
+        # 重新抛出 HTTP 异常
+        raise
+    except Exception as e:
+        # 回滚事务
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"提交答案失败: {str(e)}"
+        )
 
 
 @router.post("/chapter-test", response_model=ChapterTestResponse)

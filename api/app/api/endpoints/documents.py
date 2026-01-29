@@ -55,12 +55,26 @@ async def upload_document(
     6. 存入 ChromaDB
     7. 创建数据库记录
     """
+    # 文件大小限制（50MB）
+    MAX_FILE_SIZE = 50 * 1024 * 1024
+    
+    # 读取文件内容
+    content = await file.read()
+    
+    # 检查文件大小
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"文件过大，最大支持 {MAX_FILE_SIZE // (1024*1024)}MB"
+        )
+    
     # 保存到临时文件
-    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as tmp_file:
-        tmp_file.write(await file.read())
-        tmp_file_path = tmp_file.name
-
+    tmp_file_path = None
     try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as tmp_file:
+            tmp_file.write(content)
+            tmp_file_path = tmp_file.name
+
         # 计算文档处理器
         processor = DocumentProcessor()
         md5_hash = processor.calculate_md5(tmp_file_path)
@@ -69,13 +83,87 @@ async def upload_document(
         existing_document = await get_document_by_md5(db, md5_hash)
 
         if existing_document:
-            # 文档已存在 - 返回已有记录
+            # 文档内容已存在，但为当前用户创建新的文档记录
+            # 这样可以复用 ChromaDB 向量数据，但每个用户有独立的学习进度
+            
+            # 检查当前用户是否已经有这个文档
+            from sqlalchemy import select, and_
+            from app.models.document import Document as DocumentModel
+            
+            user_doc_result = await db.execute(
+                select(DocumentModel).where(
+                    and_(
+                        DocumentModel.md5_hash == md5_hash,
+                        DocumentModel.uploaded_by == current_user.id
+                    )
+                )
+            )
+            user_existing_doc = user_doc_result.scalar_one_or_none()
+            
+            if user_existing_doc:
+                # 用户已经上传过这个文档
+                return DocumentUploadResponse(
+                    message="✨ 您已上传过此文档",
+                    is_duplicate=True,
+                    document_id=user_existing_doc.id,
+                    md5_hash=md5_hash,
+                    processing_status=user_existing_doc.processing_status
+                )
+            
+            # 为当前用户创建新的文档记录（复用向量数据）
+            from app.schemas.document import DocumentCreate
+            document_data = DocumentCreate(
+                filename=file.filename,
+                file_type=file.filename.split(".")[-1].lower(),
+                file_size=len(content),
+                md5_hash=md5_hash
+            )
+            
+            new_document = await create_document(db, document_data, current_user.id)
+            
+            # 更新文档状态
+            await update_document_status(
+                db,
+                new_document.id,
+                status="completed",
+                total_pages=existing_document.total_pages,
+                total_chapters=0,
+                title=title or file.filename
+            )
+            
+            # 为新用户创建章节（从 ChromaDB 恢复文本）
+            try:
+                from app.services.chapter_divider import ChapterDivider
+                from app.core.chroma import get_document_collection
+                
+                divider = ChapterDivider()
+                
+                # 从 ChromaDB 恢复文档文本
+                collection = get_document_collection(md5_hash)
+                if collection and collection.count() > 0:
+                    results = collection.get()
+                    if results and results['documents']:
+                        document_text = "\n\n".join(results['documents'])
+                        
+                        chapters = await divider.divide_document_into_chapters(
+                            document_id=new_document.id,
+                            user_id=current_user.id,
+                            document_text=document_text,
+                            db=db
+                        )
+                        
+                        print(f"✅ 为新用户创建了 {len(chapters)} 个章节")
+            except Exception as e:
+                print(f"⚠️  章节划分失败: {str(e)}")
+                import traceback
+                traceback.print_exc()
+            
             return DocumentUploadResponse(
-                message="✨ 已从记忆库加载（文档已存在）",
+                message=f"✨ 文档已存在，已为您创建学习记录",
                 is_duplicate=True,
-                document_id=existing_document.id,
+                document_id=new_document.id,
                 md5_hash=md5_hash,
-                processing_status=existing_document.processing_status
+                processing_status="completed"
             )
 
         # 处理新文档
@@ -134,21 +222,42 @@ async def upload_document(
             new_document.id,
             status="completed",
             total_pages=result['stats'].get('total_pages', 0),
-            total_chapters=1,  # 简化：暂时设为1章
+            total_chapters=0,  # 稍后由章节划分服务更新
             title=title or file.filename
         )
 
-        # 创建初始进度记录
-        await create_progress(
-            db,
-            ProgressCreate(
-                user_id=current_user.id,
-                document_id=new_document.id,
-                chapter_number=1,
-                chapter_title=title or file.filename,
-                cognitive_level_assigned=current_user.cognitive_level
+        # 🎯 核心：自动划分章节
+        try:
+            from app.services.chapter_divider import ChapterDivider
+
+            divider = ChapterDivider()
+            # 使用所有文本内容，而不是只用第一个
+            document_text = "\n\n".join(result['texts']) if result['texts'] else ""
+
+            if document_text:
+                chapters = await divider.divide_document_into_chapters(
+                    document_id=new_document.id,
+                    user_id=current_user.id,
+                    document_text=document_text,
+                    db=db
+                )
+
+                print(f"✅ 文档处理完成，共划分 {len(chapters)} 个章节")
+        except Exception as e:
+            print(f"⚠️  章节划分失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            # 即使章节划分失败，也创建一个默认章节
+            await create_progress(
+                db,
+                ProgressCreate(
+                    user_id=current_user.id,
+                    document_id=new_document.id,
+                    chapter_number=1,
+                    chapter_title=title or file.filename,
+                    cognitive_level_assigned=current_user.cognitive_level
+                )
             )
-        )
 
         return DocumentUploadResponse(
             message=f"✅ 文档上传成功：{file.filename}",
@@ -166,8 +275,59 @@ async def upload_document(
 
     finally:
         # 清理临时文件
-        if os.path.exists(tmp_file_path):
-            os.remove(tmp_file_path)
+        if tmp_file_path and os.path.exists(tmp_file_path):
+            try:
+                os.remove(tmp_file_path)
+            except Exception as e:
+                # 记录错误但不抛出异常
+                print(f"⚠️  清理临时文件失败: {e}")
+
+
+@router.get("/health")
+async def health_check():
+    """Health check endpoint."""
+    return {"status": "healthy", "service": "EduGenius API"}
+
+
+@router.get("/list")
+async def list_documents(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    获取当前用户上传的所有文档列表
+    """
+    from sqlalchemy import select
+    from app.models.document import Document
+    
+    # 查询用户的所有文档
+    result = await db.execute(
+        select(Document).where(
+            Document.uploaded_by == current_user.id
+        ).order_by(Document.uploaded_at.desc())
+    )
+    documents = result.scalars().all()
+    
+    # 转换为字典列表
+    document_list = []
+    for doc in documents:
+        document_list.append({
+            "id": doc.id,
+            "filename": doc.filename,
+            "title": doc.title or doc.filename,
+            "file_type": doc.file_type,
+            "file_size": doc.file_size,
+            "total_pages": doc.total_pages,
+            "total_chapters": doc.total_chapters,
+            "processing_status": doc.processing_status,
+            "uploaded_at": doc.uploaded_at.isoformat() if doc.uploaded_at else None,
+            "md5_hash": doc.md5_hash
+        })
+    
+    return {
+        "documents": document_list,
+        "total": len(document_list)
+    }
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)
@@ -332,7 +492,207 @@ async def get_document_chapters(
     }
 
 
-@router.get("/health")
-async def health_check():
-    """Health check endpoint."""
-    return {"status": "healthy", "service": "EduGenius API"}
+@router.post("/{document_id}/redivide-chapters")
+async def redivide_chapters(
+    document_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    重新划分文档章节
+    使用 LLM 重新分析文档并划分章节
+    """
+    from sqlalchemy import select, delete
+    from app.models.document import Document, Progress
+    from app.services.chapter_divider import ChapterDivider
+    from app.services.document_processor import DocumentProcessor
+
+    # 验证文档存在
+    doc_result = await db.execute(select(Document).where(Document.id == document_id))
+    document = doc_result.scalar_one_or_none()
+
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="文档不存在"
+        )
+
+    # 验证文档所有权
+    if document.uploaded_by != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="无权限操作此文档"
+        )
+
+    try:
+        # 删除旧的章节进度记录
+        await db.execute(
+            delete(Progress).where(
+                Progress.user_id == current_user.id,
+                Progress.document_id == document_id
+            )
+        )
+        await db.commit()
+
+        # 重新解析文档
+        processor = DocumentProcessor()
+        result = await processor.process_document(
+            file_path=None,  # 这里需要修改，应该使用存储的文件
+            metadata={'title': document.title}
+        )
+
+        # 获取文档文本
+        document_text = result['texts'][0] if result['texts'] else ""
+
+        if not document_text:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="无法提取文档内容"
+            )
+
+        # 重新划分章节
+        divider = ChapterDivider()
+        chapters = await divider.divide_document_into_chapters(
+            document_id=document_id,
+            user_id=current_user.id,
+            document_text=document_text,
+            db=db
+        )
+
+        return {
+            "message": f"✅ 章节重新划分成功，共 {len(chapters)} 个章节",
+            "document_id": document_id,
+            "total_chapters": len(chapters),
+            "chapters": chapters
+        }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_SERVER_ERROR,
+            detail=f"章节划分失败: {str(e)}"
+        )
+
+
+@router.get("/{document_id}/chapters/{chapter_number}/subsections")
+async def get_chapter_subsections(
+    document_id: int,
+    chapter_number: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    获取章节的所有小节
+    """
+    from sqlalchemy import select
+    from app.models.subsection import Subsection
+    from app.models.document import Progress
+    
+    # 验证章节存在
+    progress_result = await db.execute(
+        select(Progress).where(
+            Progress.user_id == current_user.id,
+            Progress.document_id == document_id,
+            Progress.chapter_number == chapter_number
+        )
+    )
+    progress = progress_result.scalar_one_or_none()
+    
+    if not progress:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="章节不存在"
+        )
+    
+    # 获取所有小节
+    subsections_result = await db.execute(
+        select(Subsection).where(
+            Subsection.document_id == document_id,
+            Subsection.chapter_number == chapter_number
+        ).order_by(Subsection.subsection_number)
+    )
+    subsections = subsections_result.scalars().all()
+    
+    # 一次性获取所有小节的进度（优化 N+1 查询）
+    subsection_numbers = [s.subsection_number for s in subsections]
+    if subsection_numbers:
+        progress_result = await db.execute(
+            select(Progress).where(
+                Progress.user_id == current_user.id,
+                Progress.document_id == document_id,
+                Progress.chapter_number == chapter_number,
+                Progress.subsection_number.in_(subsection_numbers)
+            )
+        )
+        progress_map = {p.subsection_number: p for p in progress_result.scalars().all()}
+    else:
+        progress_map = {}
+    
+    # 转换为响应格式
+    subsection_list = []
+    for subsection in subsections:
+        # 从 map 中查找进度
+        subsection_progress = progress_map.get(subsection.subsection_number)
+        
+        is_completed = False
+        progress_percentage = 0.0
+        
+        if subsection_progress:
+            is_completed = subsection_progress.status == "completed"
+            progress_percentage = subsection_progress.subsection_progress or 0.0
+        
+        subsection_list.append({
+            "subsection_number": subsection.subsection_number,
+            "subsection_title": subsection.subsection_title,
+            "content_summary": subsection.content_summary,
+            "estimated_time_minutes": subsection.estimated_time_minutes,
+            "is_completed": is_completed,
+            "progress": progress_percentage
+        })
+    
+    return {
+        "document_id": document_id,
+        "chapter_number": chapter_number,
+        "chapter_title": progress.chapter_title,
+        "total_subsections": len(subsection_list),
+        "subsections": subsection_list
+    }
+
+
+@router.delete("/{document_id}")
+async def delete_document(
+    document_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    删除文档
+    """
+    from sqlalchemy import select, delete
+    from app.models.document import Document
+    
+    # 验证文档存在且属于当前用户
+    result = await db.execute(
+        select(Document).where(Document.id == document_id)
+    )
+    document = result.scalar_one_or_none()
+    
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="文档不存在"
+        )
+    
+    if document.uploaded_by != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="无权限删除此文档"
+        )
+    
+    # 删除文档
+    await db.execute(
+        delete(Document).where(Document.id == document_id)
+    )
+    await db.commit()
+    
+    return {"message": "文档删除成功", "document_id": document_id}
+

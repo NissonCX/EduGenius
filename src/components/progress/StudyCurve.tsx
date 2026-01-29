@@ -176,7 +176,7 @@ export function StudyCurve({ data = [] }: StudyCurveProps) {
                 fontSize: '12px'
               }}
               labelFormatter={(label) => `日期: ${label}`}
-              formatter={(value: any, name: string) => {
+              formatter={(value: any, name?: string) => {
                 if (name === '完成度') return [`${value}%`, name]
                 if (name === '学习时长') return [`${value}分钟`, name]
                 return [value, name]

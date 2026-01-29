@@ -178,15 +178,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [])
 
   // 获取认证请求头
-  const getAuthHeaders = useCallback((contentType: boolean = true) => {
+  const getAuthHeaders = useCallback((includeContentType: boolean = true) => {
     const headers: Record<string, string> = {}
 
-    if (contentType) {
-      headers['Content-Type'] = 'application/json'
-    }
-
+    // 始终添加 Authorization 头（如果有 token）
     if (authState.token) {
       headers['Authorization'] = `Bearer ${authState.token}`
+    }
+
+    // 根据参数决定是否添加 Content-Type
+    if (includeContentType) {
+      headers['Content-Type'] = 'application/json'
     }
 
     return headers

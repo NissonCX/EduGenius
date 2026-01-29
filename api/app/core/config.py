@@ -15,6 +15,10 @@ class Settings:
     DASHSCOPE_API_KEY: str = os.getenv("DASHSCOPE_API_KEY", "")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")  # 备用
 
+    # 安全配置
+    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "")
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "120"))  # 默认 2 小时
+
     # 数据库配置
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./edugenius.db")
 

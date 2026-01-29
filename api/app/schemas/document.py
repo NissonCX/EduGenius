@@ -1,7 +1,7 @@
 """
 Pydantic schemas for request/response validation.
 """
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, field_validator
 from typing import Optional, List
 from datetime import datetime
 
@@ -11,6 +11,17 @@ class UserBase(BaseModel):
     email: EmailStr
     username: str = Field(..., min_length=3, max_length=100)
     cognitive_level: int = Field(default=1, ge=1, le=5)
+
+    @field_validator('username')
+    @classmethod
+    def validate_username(cls, v):
+        if not v or not v.strip():
+            raise ValueError('用户名不能为空')
+        # 只允许字母、数字、下划线
+        import re
+        if not re.match(r'^[a-zA-Z0-9_]+$', v):
+            raise ValueError('用户名只能包含字母、数字和下划线')
+        return v.strip()
 
 
 class UserCreate(UserBase):
@@ -30,13 +41,32 @@ class UserResponse(UserBase):
 
 # ============== Document Schemas ==============
 class DocumentBase(BaseModel):
-    filename: str
+    filename: str = Field(..., min_length=1, max_length=255)
     file_type: str = Field(..., pattern=r'^(pdf|txt|docx)$')
+
+    @field_validator('filename')
+    @classmethod
+    def validate_filename(cls, v):
+        if not v or not v.strip():
+            raise ValueError('文件名不能为空')
+        # 检查文件名是否包含非法字符
+        import re
+        if re.search(r'[<>:"/\\|?*]', v):
+            raise ValueError('文件名包含非法字符')
+        return v.strip()
 
 
 class DocumentCreate(DocumentBase):
-    file_size: int
-    md5_hash: str
+    file_size: int = Field(..., gt=0, le=52428800)  # 最大 50MB
+    md5_hash: str = Field(..., min_length=32, max_length=32)
+
+    @field_validator('md5_hash')
+    @classmethod
+    def validate_md5_hash(cls, v):
+        import re
+        if not re.match(r'^[a-f0-9]{32}$', v.lower()):
+            raise ValueError('无效的 MD5 哈希值')
+        return v.lower()
 
 
 class DocumentResponse(DocumentBase):
@@ -71,9 +101,16 @@ class ProgressBase(BaseModel):
 
 
 class ProgressCreate(ProgressBase):
-    user_id: int
-    document_id: int
+    user_id: int = Field(..., gt=0)
+    document_id: int = Field(..., gt=0)
     cognitive_level_assigned: int = Field(default=1, ge=1, le=5)
+
+    @field_validator('chapter_number')
+    @classmethod
+    def validate_chapter_number(cls, v):
+        if v < 1 or v > 100:
+            raise ValueError('章节编号必须在 1-100 之间')
+        return v
 
 
 class ProgressUpdate(BaseModel):

@@ -8,32 +8,28 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Loader2, User, Bot } from 'lucide-react'
+import { Send, Loader2 } from 'lucide-react'
 import { Message } from '@/types/chat'
 import { ChatMessage } from './ChatMessage'
 import { StreamingMessage } from './StreamingMessage'
 import { TypingIndicator } from './TypingIndicator'
-import { StrictnessMenu } from './StrictnessMenu'
 import { useAuth } from '@/contexts/AuthContext'
 import { safeFetch, handleApiError, getFriendlyErrorMessage } from '@/lib/errors'
+import { getApiUrl } from '@/lib/config'
 
 interface StudyChatProps {
   chapterId?: string
   chapterTitle?: string
-  studentLevel?: number
-  onStrictnessChange?: (level: number) => void
   className?: string
 }
 
 export function StudyChat({
   chapterId = '1',
   chapterTitle = '第一章：线性代数基础',
-  studentLevel,
-  onStrictnessChange,
   className = ''
 }: StudyChatProps) {
   // 使用 useAuth hook 获取真实用户信息
-  const { user, token, isAuthenticated, getAuthHeaders } = useAuth()
+  const { user, isAuthenticated, getAuthHeaders } = useAuth()
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
@@ -64,7 +60,7 @@ export function StudyChat({
 
     try {
       // 更新学习进度（增加1分钟学习时间）
-      await fetch(`http://localhost:8000/api/users/${user.id}/update-chapter-progress`, {
+      await fetch(getApiUrl(`/api/users/${user.id}/update-chapter-progress`), {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -77,7 +73,7 @@ export function StudyChat({
       })
 
       // 保存用户消息
-      await fetch(`http://localhost:8000/api/users/${user.id}/save-conversation`, {
+      await fetch(getApiUrl(`/api/users/${user.id}/save-conversation`), {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -89,7 +85,7 @@ export function StudyChat({
       })
 
       // 保存 AI 回复
-      await fetch(`http://localhost:8000/api/users/${user.id}/save-conversation`, {
+      await fetch(getApiUrl(`/api/users/${user.id}/save-conversation`), {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -107,6 +103,9 @@ export function StudyChat({
 
   // 加载历史对话和用户状态
   useEffect(() => {
+    let isMounted = true // 防止组件卸载后更新状态
+    const abortController = new AbortController() // 取消请求
+
     const loadHistory = async () => {
       // 不要在这里使用 early return，确保 Hooks 顺序一致
       if (!user.id) {
@@ -117,13 +116,14 @@ export function StudyChat({
       try {
         // 获取历史对话，使用真实用户 ID（使用 safeFetch）
         const historyResponse = await safeFetch(
-          `http://localhost:8000/api/users/${user.id}/history?chapter_number=${chapterId}`,
+          getApiUrl(`/api/users/${user.id}/history?chapter_number=${chapterId}`),
           {
-            headers: getAuthHeaders()
+            headers: getAuthHeaders(),
+            signal: abortController.signal
           }
         )
 
-        if (historyResponse.ok) {
+        if (historyResponse.ok && isMounted) {
           const historyData = await historyResponse.json()
 
           // 转换历史对话为 Message 格式
@@ -144,9 +144,11 @@ export function StudyChat({
             })
           }
 
-          setMessages(historyMessages)
+          if (isMounted) {
+            setMessages(historyMessages)
+          }
 
-        } else {
+        } else if (isMounted) {
           // API 失败，显示默认欢迎消息
           setMessages([{
             id: 'welcome',
@@ -155,23 +157,39 @@ export function StudyChat({
             timestamp: new Date()
           }])
         }
-      } catch (error) {
+      } catch (error: any) {
+        if (error.name === 'AbortError') {
+          console.log('请求已取消')
+          return
+        }
+        
         const apiError = handleApiError(error)
         console.error('加载历史失败:', apiError)
+        
         // 显示默认欢迎消息
-        setMessages([{
-          id: 'welcome',
-          role: 'assistant',
-          content: `👋 欢迎来到 **${chapterTitle}**！\n\n我是你的 AI 导师。今天我们将一起探索这个章节的核心概念。\n\n让我们开始吧！请告诉我你想了解的内容，或者我可以为你讲解重点知识。`,
-          timestamp: new Date()
-        }])
+        if (isMounted) {
+          setMessages([{
+            id: 'welcome',
+            role: 'assistant',
+            content: `👋 欢迎来到 **${chapterTitle}**！\n\n我是你的 AI 导师。今天我们将一起探索这个章节的核心概念。\n\n让我们开始吧！请告诉我你想了解的内容，或者我可以为你讲解重点知识。`,
+            timestamp: new Date()
+          }])
+        }
       } finally {
-        setIsLoadingHistory(false)
+        if (isMounted) {
+          setIsLoadingHistory(false)
+        }
       }
     }
 
     loadHistory()
-  }, [user.id, chapterId, chapterTitle])
+
+    // 清理函数
+    return () => {
+      isMounted = false
+      abortController.abort()
+    }
+  }, [user.id, chapterId, chapterTitle, getAuthHeaders])
 
   useEffect(() => {
     scrollToBottom()
@@ -181,9 +199,11 @@ export function StudyChat({
   const startStreaming = async (userMessage: string) => {
     setIsStreaming(true)
     setStreamingContent('')
+    
+    const abortController = new AbortController()
 
     try {
-      const response = await safeFetch('http://localhost:8000/api/teaching/chat', {
+      const response = await safeFetch(getApiUrl('/api/teaching/chat'), {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -192,7 +212,8 @@ export function StudyChat({
           student_level: currentStyle,
           stream: true,
           user_id: user.id
-        })
+        }),
+        signal: abortController.signal
       })
 
       if (!response.ok) {
@@ -278,7 +299,12 @@ export function StudyChat({
         throw new Error('未收到响应内容')
       }
 
-    } catch (error) {
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.log('请求已取消')
+        return
+      }
+      
       const apiError = handleApiError(error)
       const friendlyMessage = getFriendlyErrorMessage(apiError)
 
@@ -338,111 +364,68 @@ export function StudyChat({
         </div>
       ) : (
         <>
-          {/* 顶部进度条 */}
-          <div className="border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h2 className="text-lg font-semibold text-black">{chapterTitle}</h2>
-          </div>
-          <div className="text-right">
-            <p className="text-sm text-gray-500">学习进度</p>
-            <p className="text-2xl font-semibold text-emerald-600 mt-1">65%</p>
-          </div>
-        </div>
-
-        {/* 流光进度条 */}
-        <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden relative">
-          <motion.div
-            className="h-full bg-black rounded-full"
-            initial={{ width: 0 }}
-            animate={{ width: '65%' }}
-            transition={{ duration: 0.8, ease: 'easeOut' }}
-          />
-          {/* 流光效果 */}
-          <motion.div
-            className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent"
-            animate={{ x: ['-100%', '100%'] }}
-            transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
-          />
-        </div>
-      </div>
-
-      {/* 消息列表 */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-        {isLoadingHistory ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
-            <p className="ml-3 text-sm text-gray-500">正在加载学习历史...</p>
-          </div>
-        ) : (
-          <AnimatePresence>
-            {messages.map((message) => (
-              <ChatMessage key={message.id} message={message} />
-            ))}
-          </AnimatePresence>
-        )}
-
-        {/* 流式消息（打字机效果） */}
-        {isStreaming && streamingContent && (
-          <StreamingMessage content={streamingContent} isComplete={false} />
-        )}
-
-        {/* 正在思考指示器 */}
-        {isStreaming && !streamingContent && (
-          <TypingIndicator />
-        )}
-
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* 输入框 */}
-      <div className="border-t border-gray-200 px-6 py-4 bg-white relative">
-        <div className="flex items-end gap-3 max-w-4xl mx-auto">
-          <div className="flex-1 relative">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="输入你的问题... (Shift+Enter 换行)"
-              className="w-full px-4 py-3 pr-14 bg-white border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent transition-all text-sm"
-              rows={1}
-              disabled={isStreaming}
-              style={{ minHeight: '48px', maxHeight: '150px' }}
-            />
-
-            {/* 导师风格浮动菜单 */}
-            <div className="absolute right-2 top-1/2 -translate-y-1/2">
-              <StrictnessMenu
-                currentLevel={currentStyle}
-                onChange={(level) => {
-                  setCurrentStyle(level)
-                  // 通知父组件（study/page.tsx），以便更新右侧边栏
-                  onStrictnessChange?.(level)
-                }}
-              />
-            </div>
-          </div>
-
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={handleSend}
-            disabled={isStreaming || !input.trim()}
-            className="px-4 py-3 bg-black text-white rounded-xl hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex-shrink-0"
-          >
-            {isStreaming ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
+          {/* 消息列表 */}
+          <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
+            {isLoadingHistory ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
+                <p className="ml-3 text-sm text-gray-500">正在加载学习历史...</p>
+              </div>
             ) : (
-              <Send className="w-5 h-5" />
+              <AnimatePresence>
+                {messages.map((message) => (
+                  <ChatMessage key={message.id} message={message} />
+                ))}
+              </AnimatePresence>
             )}
-          </motion.button>
-        </div>
 
-        <p className="text-xs text-gray-500 mt-2 text-center">
-          按 Enter 发送，Shift+Enter 换行 · AI 导师会根据你的等级调整教学风格
-        </p>
-      </div>
+            {/* 流式消息（打字机效果） */}
+            {isStreaming && streamingContent && (
+              <StreamingMessage content={streamingContent} isComplete={false} />
+            )}
+
+            {/* 正在思考指示器 */}
+            {isStreaming && !streamingContent && (
+              <TypingIndicator />
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* 输入框 */}
+          <div className="border-t border-gray-200 px-6 py-4 bg-white">
+            <div className="flex items-end gap-3 max-w-5xl mx-auto">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="输入你的问题... (Shift+Enter 换行)"
+                className="flex-1 px-4 py-3 bg-white border-2 border-gray-200 rounded-xl resize-none focus:outline-none focus:border-black transition-all text-sm"
+                rows={1}
+                disabled={isStreaming}
+                style={{ minHeight: '48px', maxHeight: '150px' }}
+              />
+
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleSend}
+                disabled={isStreaming || !input.trim()}
+                className="px-6 py-3 bg-black text-white rounded-xl hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex-shrink-0 h-12"
+              >
+                {isStreaming ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Send className="w-5 h-5" />
+                )}
+              </motion.button>
+            </div>
+
+            <p className="text-xs text-gray-500 mt-3 text-center max-w-5xl mx-auto">
+              按 Enter 发送，Shift+Enter 换行
+            </p>
+          </div>
         </>
       )}
     </div>

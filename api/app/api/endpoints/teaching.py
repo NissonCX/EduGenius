@@ -52,6 +52,9 @@ MAX_SESSIONS = 1000  # 最大 session 数量
 SESSION_LAST_ACCESS_KEY = "_last_access"
 SESSION_CREATED_AT_KEY = "_created_at"
 
+# 全局清理任务引用
+_cleanup_task: Optional[asyncio.Task] = None
+
 
 async def cleanup_expired_sessions():
     """
@@ -73,6 +76,9 @@ async def cleanup_expired_sessions():
         for session_id in expired_sessions:
             del active_sessions[session_id]
 
+        if expired_sessions:
+            print(f"🧹 清理了 {len(expired_sessions)} 个过期 session")
+
         # 如果仍然超过最大数量，移除最旧的
         if len(active_sessions) > MAX_SESSIONS:
             # 按创建时间排序，移除最旧的
@@ -84,9 +90,11 @@ async def cleanup_expired_sessions():
             num_to_remove = len(active_sessions) - MAX_SESSIONS
             for session_id, _ in sessions_by_age[:num_to_remove]:
                 del active_sessions[session_id]
+            
+            print(f"🧹 清理了 {num_to_remove} 个最旧的 session")
 
     except Exception as e:
-        print(f"清理 session 失败: {e}")
+        print(f"❌ 清理 session 失败: {e}")
 
 
 async def session_cleanup_task():
@@ -95,19 +103,28 @@ async def session_cleanup_task():
     每 5 分钟执行一次清理
     """
     while True:
-        await asyncio.sleep(300)  # 5 分钟
-        await cleanup_expired_sessions()
+        try:
+            await asyncio.sleep(300)  # 5 分钟
+            await cleanup_expired_sessions()
+        except asyncio.CancelledError:
+            print("🛑 Session 清理任务已停止")
+            break
+        except Exception as e:
+            print(f"❌ Session 清理任务异常: {e}")
+            # 继续运行，不要因为单次错误而停止
 
 
-# 启动清理任务
-_cleanup_task = None
-
-
-def get_session_cleanup_task():
-    """获取或创建清理任务"""
+def start_session_cleanup_task() -> asyncio.Task:
+    """
+    启动清理任务（由 main.py 的 lifespan 调用）
+    
+    Returns:
+        asyncio.Task: 清理任务
+    """
     global _cleanup_task
-    if _cleanup_task is None:
+    if _cleanup_task is None or _cleanup_task.done():
         _cleanup_task = asyncio.create_task(session_cleanup_task())
+        print("✅ Session 清理任务已启动")
     return _cleanup_task
 
 
@@ -169,9 +186,6 @@ async def start_teaching_session(
     4. Runs Examiner node (generate questions)
     5. Streams results via SSE
     """
-    # 启动清理任务
-    get_session_cleanup_task()
-
     # Get chapter content
     chapter_title, chapter_content = await get_chapter_content(
         db,
@@ -223,15 +237,24 @@ async def start_teaching_session(
 
     async def event_generator():
         """Generate SSE events."""
+        timeout_seconds = 300  # 5分钟超时
+        
         try:
-            async for event in stream_handler.stream_teaching_session(initial_state):
-                # Format as SSE
-                event_data = json.dumps(event, ensure_ascii=False)
-                yield f"data: {event_data}\n\n"
+            async with asyncio.timeout(timeout_seconds):
+                async for event in stream_handler.stream_teaching_session(initial_state):
+                    # Format as SSE
+                    event_data = json.dumps(event, ensure_ascii=False)
+                    yield f"data: {event_data}\n\n"
 
-                # Small delay between events
-                await asyncio.sleep(0.1)
+                    # Small delay between events
+                    await asyncio.sleep(0.1)
 
+        except asyncio.TimeoutError:
+            timeout_event = {
+                "type": "error",
+                "message": "请求超时，请稍后重试"
+            }
+            yield f"data: {json.dumps(timeout_event, ensure_ascii=False)}\n\n"
         except Exception as e:
             error_event = {
                 "type": "error",
@@ -332,28 +355,37 @@ async def ask_tutor(
 
     async def event_generator():
         """Generate SSE events for tutor response."""
+        timeout_seconds = 120  # 2分钟超时
+        
         try:
-            # Send typing indicator
-            typing_event = {
-                "type": "tutor_thinking",
-                "message": "老师正在思考..."
+            async with asyncio.timeout(timeout_seconds):
+                # Send typing indicator
+                typing_event = {
+                    "type": "tutor_thinking",
+                    "message": "老师正在思考..."
+                }
+                yield f"data: {json.dumps(typing_event, ensure_ascii=False)}\n\n"
+
+                # Get answer
+                answer = await tutor.answer_question(state, request.question)
+
+                # Stream the answer
+                response_event = {
+                    "type": "tutor_response",
+                    "content": answer
+                }
+                yield f"data: {json.dumps(response_event, ensure_ascii=False)}\n\n"
+
+                # Update conversation history
+                state["conversation_history"].append(AIMessage(content=answer))
+                active_sessions[session_id] = state
+
+        except asyncio.TimeoutError:
+            timeout_event = {
+                "type": "error",
+                "message": "请求超时，请稍后重试"
             }
-            yield f"data: {json.dumps(typing_event, ensure_ascii=False)}\n\n"
-
-            # Get answer
-            answer = await tutor.answer_question(state, request.question)
-
-            # Stream the answer
-            response_event = {
-                "type": "tutor_response",
-                "content": answer
-            }
-            yield f"data: {json.dumps(response_event, ensure_ascii=False)}\n\n"
-
-            # Update conversation history
-            state["conversation_history"].append(AIMessage(content=answer))
-            active_sessions[session_id] = state
-
+            yield f"data: {json.dumps(timeout_event, ensure_ascii=False)}\n\n"
         except Exception as e:
             error_event = {
                 "type": "error",
@@ -538,33 +570,42 @@ async def chat_with_tutor(
     if request.stream:
         # SSE 流式响应
         async def event_generator():
+            timeout_seconds = 180  # 3分钟超时
+            
             try:
-                # 生成回复
-                response = await tutor.answer_question(
-                    temp_state,
-                    request.message
-                )
+                async with asyncio.timeout(timeout_seconds):
+                    # 生成回复
+                    response = await tutor.answer_question(
+                        temp_state,
+                        request.message
+                    )
 
-                # 按词/短语分割（优化流式性能）
-                import re
-                # 按中文词汇、英文单词、标点符号分割
-                chunks = re.findall(r'[\u4e00-\u9fff]+|[a-zA-Z0-9]+|[^\w\s]', response)
+                    # 按词/短语分割（优化流式性能）
+                    import re
+                    # 按中文词汇、英文单词、标点符号分割
+                    chunks = re.findall(r'[\u4e00-\u9fff]+|[a-zA-Z0-9]+|[^\w\s]', response)
 
-                # 如果分词失败，回退到逐字发送
-                if not chunks:
-                    chunks = list(response)
+                    # 如果分词失败，回退到逐字发送
+                    if not chunks:
+                        chunks = list(response)
 
-                # 逐词发送
-                for chunk in chunks:
-                    chunk_event = {
-                        "content": chunk
-                    }
-                    yield f"data: {json.dumps(chunk_event, ensure_ascii=False)}\n\n"
-                    await asyncio.sleep(0.03)  # 打字速度
+                    # 逐词发送
+                    for chunk in chunks:
+                        chunk_event = {
+                            "content": chunk
+                        }
+                        yield f"data: {json.dumps(chunk_event, ensure_ascii=False)}\n\n"
+                        await asyncio.sleep(0.03)  # 打字速度
 
-                # 发送完成标记
-                yield f"data: [DONE]\n\n"
+                    # 发送完成标记
+                    yield f"data: [DONE]\n\n"
 
+            except asyncio.TimeoutError:
+                error_event = {
+                    "type": "error",
+                    "message": "请求超时，请稍后重试"
+                }
+                yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
             except Exception as e:
                 error_event = {
                     "type": "error",

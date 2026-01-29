@@ -29,6 +29,36 @@ from app.core.security import (
 router = APIRouter(prefix="/api/users", tags=["users"])
 
 
+# ============ 密码验证函数 ============
+def validate_password(password: str) -> tuple[bool, str]:
+    """
+    验证密码复杂度
+
+    Args:
+        password: 密码字符串
+
+    Returns:
+        tuple[bool, str]: (是否有效, 错误信息)
+    """
+    if len(password) < 8:
+        return False, "密码长度至少8位"
+
+    if not re.search(r"[A-Z]", password):
+        return False, "密码必须包含至少一个大写字母"
+
+    if not re.search(r"[a-z]", password):
+        return False, "密码必须包含至少一个小写字母"
+
+    if not re.search(r"\d", password):
+        return False, "密码必须包含至少一个数字"
+
+    # 可选：特殊字符
+    # if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", password):
+    #     return False, "密码必须包含至少一个特殊字符"
+
+    return True, ""
+
+
 # ============ 能力评估辅助函数 ============
 def classify_question_type(question_text: str) -> str:
     """
@@ -419,6 +449,14 @@ async def register_user(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="用户名已被使用"
+        )
+
+    # 验证密码复杂度
+    is_valid, error_msg = validate_password(user_data.password)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_msg
         )
 
     # 创建新用户（密码哈希）
@@ -821,8 +859,8 @@ async def update_chapter_progress(
         if "completion_percentage" in progress_data:
             progress.completion_percentage = min(100, max(0, progress_data["completion_percentage"]))
 
-            # 如果完成度达到 80%，标记为完成
-            if progress.completion_percentage >= 80 and progress.status != "completed":
+            # 如果完成度达到 95%，标记为完成
+            if progress.completion_percentage >= 95 and progress.status != "completed":
                 progress.status = "completed"
                 progress.completed_at = datetime.now()
 

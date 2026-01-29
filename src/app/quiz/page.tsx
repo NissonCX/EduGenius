@@ -1,9 +1,12 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { ArrowLeft } from 'lucide-react';
 import { Quiz, QuizResult } from '@/components/quiz';
-import { safeFetch } from '@/lib/api';
+import { safeFetch } from '@/lib/errors';
+import { useAuth } from '@/contexts/AuthContext';
+import { getApiUrl } from '@/lib/config';
 
 interface Question {
   id: number;
@@ -23,11 +26,14 @@ interface QuizResults {
   answers: { questionId: number; userAnswer: string; isCorrect: boolean }[];
 }
 
-export default function QuizPage() {
+function QuizPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const documentId = searchParams.get('documentId');
-  const chapterNumber = searchParams.get('chapterNumber');
+  const { user, token, getAuthHeaders } = useAuth();
+  
+  // 使用新的参数名称
+  const docId = searchParams.get('doc');
+  const chapterId = searchParams.get('chapter');
   const mode = searchParams.get('mode') || 'practice'; // 'practice' or 'test'
 
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -35,15 +41,37 @@ export default function QuizPage() {
   const [error, setError] = useState<string | null>(null);
   const [showResult, setShowResult] = useState(false);
   const [quizResults, setQuizResults] = useState<QuizResults | null>(null);
+  const [documentTitle, setDocumentTitle] = useState('');
+  const [chapterTitle, setChapterTitle] = useState('');
 
   useEffect(() => {
-    if (documentId && chapterNumber) {
+    if (docId && chapterId) {
+      loadChapterInfo();
       loadQuestions();
     } else {
-      setError('缺少必需参数：documentId 或 chapterNumber');
+      setError('缺少必需参数：doc 或 chapter');
       setLoading(false);
     }
-  }, [documentId, chapterNumber]);
+  }, [docId, chapterId]);
+
+  const loadChapterInfo = async () => {
+    try {
+      const response = await fetch(getApiUrl(`/api/documents/${docId}/chapters`), {
+        headers: getAuthHeaders()
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setDocumentTitle(data.document_title);
+        const chapter = data.chapters.find((c: any) => c.chapter_number === parseInt(chapterId!));
+        if (chapter) {
+          setChapterTitle(chapter.chapter_title);
+        }
+      }
+    } catch (err) {
+      console.error('加载章节信息失败:', err);
+    }
+  };
 
   const loadQuestions = async () => {
     try {
@@ -51,8 +79,9 @@ export default function QuizPage() {
       setError(null);
 
       // Get questions from API
-      const response = await safeFetch(
-        `http://localhost:8000/api/quiz/questions/${documentId}/${chapterNumber}`
+      const response = await fetch(
+        getApiUrl(`/api/quiz/questions/${docId}/${chapterId}`),
+        { headers: getAuthHeaders() }
       );
 
       if (!response.ok) {
@@ -77,12 +106,12 @@ export default function QuizPage() {
 
   const generateSampleQuestions = async () => {
     try {
-      const response = await safeFetch('http://localhost:8000/api/quiz/generate', {
+      const response = await fetch(getApiUrl('/api/quiz/generate'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({
-          document_id: parseInt(documentId!),
-          chapter_number: parseInt(chapterNumber!),
+          document_id: parseInt(docId!),
+          chapter_number: parseInt(chapterId!),
           question_type: 'choice',
           difficulty: 3,
           count: 5
@@ -119,12 +148,16 @@ export default function QuizPage() {
   };
 
   const handleNextChapter = () => {
-    const nextChapter = parseInt(chapterNumber!) + 1;
-    router.push(`/study?documentId=${documentId}&chapter=${nextChapter}`);
+    const nextChapter = parseInt(chapterId!) + 1;
+    router.push(`/study?doc=${docId}&chapter=${nextChapter}`);
   };
 
   const handleViewMistakes = () => {
     router.push('/mistakes');
+  };
+
+  const handleBackToChapters = () => {
+    router.push(`/study?doc=${docId}`);
   };
 
   if (loading) {
@@ -177,34 +210,59 @@ export default function QuizPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="container mx-auto">
-        <div className="mb-6">
-          <button
-            onClick={() => router.back()}
-            className="text-gray-600 hover:text-gray-900 transition-colors"
-          >
-            ← 返回
-          </button>
+    <div className="min-h-screen bg-white">
+      {/* 顶部导航栏 */}
+      <div className="border-b border-gray-200 bg-white">
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={handleBackToChapters}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5 text-gray-600" />
+              </button>
+              <div>
+                <h1 className="font-semibold text-lg text-black">
+                  {chapterTitle || `第 ${chapterId} 章`} - 章节测试
+                </h1>
+                <p className="text-sm text-gray-500">{documentTitle}</p>
+              </div>
+            </div>
+            <div className="text-sm text-gray-600">
+              共 {questions.length} 道题
+            </div>
+          </div>
         </div>
+      </div>
 
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          {mode === 'test' ? '章节测试' : '练习模式'}
-        </h1>
-        <p className="text-gray-600 mb-8">
-          第 {chapterNumber} 章 · 共 {questions.length} 道题
-        </p>
-
+      {/* 测试内容 */}
+      <div className="max-w-4xl mx-auto px-6 py-8">
         <Quiz
           questions={questions}
           onComplete={handleQuizComplete}
-          documentId={parseInt(documentId!)}
-          chapterNumber={parseInt(chapterNumber!)}
-          userId={user?.id}
-          token={token}
+          documentId={parseInt(docId!)}
+          chapterNumber={parseInt(chapterId!)}
+          userId={user?.id ?? null}
+          token={token ?? null}
           onCompetencyUpdate={handleCompetencyUpdate}
         />
       </div>
     </div>
+  );
+}
+
+export default function QuizPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
+          <p className="text-gray-600">加载中...</p>
+        </div>
+      </div>
+    }>
+      <QuizPageContent />
+    </Suspense>
   );
 }

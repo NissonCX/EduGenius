@@ -25,9 +25,10 @@ pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
 
 # ============ JWT 配置 ============
-SECRET_KEY = settings.DASHSCOPE_API_KEY  # 使用相同的 API 密钥作为签名密钥
+# 使用独立的 JWT Secret，如果未设置则使用默认密钥（生产环境必须设置）
+SECRET_KEY = settings.JWT_SECRET_KEY or "your-super-secret-jwt-key-change-in-production-min-32-chars!"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 天
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES  # 从配置读取，默认 2 小时
 
 
 class Token(BaseModel):

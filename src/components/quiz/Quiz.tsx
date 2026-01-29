@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getApiUrl } from '@/lib/config';
 
 // Types
 interface Question {
@@ -57,22 +58,59 @@ export default function Quiz({ questions, onComplete, documentId, chapterNumber,
 
     setIsSubmitting(true);
 
-    // TODO: Call API to submit answer
-    // const result = await submitAnswer({
-    //   user_id: userId,
-    //   question_id: currentQuestion.id,
-    //   user_answer: selectedAnswer,
-    //   time_spent_seconds: Math.floor((Date.now() - startTime) / 1000)
-    // });
+    // Call API to submit answer
+    try {
+      if (token && userId) {
+        const timeSpent = Math.floor((Date.now() - startTime) / 1000);
+        const response = await fetch(getApiUrl('/api/quiz/submit'), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            user_id: userId,
+            question_id: currentQuestion.id,
+            user_answer: selectedAnswer,
+            time_spent_seconds: timeSpent
+          })
+        });
 
-    // Simulate API response
-    const isCorrect = selectedAnswer.toUpperCase() === currentQuestion.correct_answer.toUpperCase();
-
-    setFeedback({
-      isCorrect,
-      message: isCorrect ? '✅ 回答正确！' : `❌ 回答错误。正确答案是：${currentQuestion.correct_answer}`,
-      explanation: currentQuestion.explanation
-    });
+        if (response.ok) {
+          const data = await response.json();
+          setFeedback({
+            isCorrect: data.is_correct,
+            message: data.feedback,
+            explanation: data.explanation
+          });
+        } else {
+          // Fallback to local validation if API fails
+          const isCorrect = selectedAnswer.toUpperCase() === currentQuestion.correct_answer.toUpperCase();
+          setFeedback({
+            isCorrect,
+            message: isCorrect ? '✅ 回答正确！' : `❌ 回答错误。正确答案是：${currentQuestion.correct_answer}`,
+            explanation: currentQuestion.explanation
+          });
+        }
+      } else {
+        // No auth - use local validation only
+        const isCorrect = selectedAnswer.toUpperCase() === currentQuestion.correct_answer.toUpperCase();
+        setFeedback({
+          isCorrect,
+          message: isCorrect ? '✅ 回答正确！' : `❌ 回答错误。正确答案是：${currentQuestion.correct_answer}`,
+          explanation: currentQuestion.explanation
+        });
+      }
+    } catch (error) {
+      console.error('Failed to submit answer:', error);
+      // Fallback to local validation on error
+      const isCorrect = selectedAnswer.toUpperCase() === currentQuestion.correct_answer.toUpperCase();
+      setFeedback({
+        isCorrect,
+        message: isCorrect ? '✅ 回答正确！' : `❌ 回答错误。正确答案是：${currentQuestion.correct_answer}`,
+        explanation: currentQuestion.explanation
+      });
+    }
 
     // Save answer
     setUserAnswers(prev => [
@@ -120,7 +158,7 @@ export default function Quiz({ questions, onComplete, documentId, chapterNumber,
     // 刷新能力数据
     if (userId && token && onCompetencyUpdate) {
       try {
-        const response = await fetch(`http://localhost:8000/api/users/${userId}/history`, {
+        const response = await fetch(getApiUrl(`/api/users/${userId}/history`), {
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`

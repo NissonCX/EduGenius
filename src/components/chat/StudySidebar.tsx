@@ -13,6 +13,8 @@ interface StudySidebarProps {
   chapterTitle: string
   keyPoints: string[]
   completedTopics: string[]
+  documentTitle?: string
+  onBackToChapters?: () => void
   className?: string
 }
 
@@ -30,12 +32,37 @@ export function StudySidebar({
   chapterTitle,
   keyPoints = [],
   completedTopics = [],
+  documentTitle,
+  onBackToChapters,
   className = ''
 }: StudySidebarProps) {
   const style = TEACHING_STYLES[teachingStyle as keyof typeof TEACHING_STYLES] || TEACHING_STYLES[3]
 
   return (
     <div className={`w-80 bg-white border-l border-gray-200 flex flex-col ${className}`}>
+      {/* 文档和章节信息 */}
+      {documentTitle && (
+        <div className="p-6 border-b border-gray-200">
+          <div className="flex items-start gap-3 mb-4">
+            <BookOpen className="w-5 h-5 text-gray-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-gray-500 mb-1">当前教材</p>
+              <p className="font-medium text-sm text-black line-clamp-2 mb-3">{documentTitle}</p>
+              <p className="text-xs text-gray-500 mb-1">当前章节</p>
+              <p className="font-medium text-sm text-black line-clamp-2">{chapterTitle}</p>
+            </div>
+          </div>
+          {onBackToChapters && (
+            <button
+              onClick={onBackToChapters}
+              className="w-full px-4 py-2 text-sm text-gray-600 hover:text-black border border-gray-200 rounded-lg hover:border-black transition-colors"
+            >
+              返回章节列表
+            </button>
+          )}
+        </div>
+      )}
+
       {/* 导师风格卡片 - 极简黑白设计 */}
       <div className="p-6 border-b border-gray-200">
         <motion.div
@@ -65,22 +92,24 @@ export function StudySidebar({
         </motion.div>
 
         {/* 学习统计 - 极简设计 */}
-        <div className="mt-4 space-y-3">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-gray-600">已完成</span>
-            <span className="font-medium text-black">
-              {completedTopics.length}/{keyPoints.length}
-            </span>
+        {keyPoints.length > 0 && (
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-600">已完成</span>
+              <span className="font-medium text-black">
+                {completedTopics.length}/{keyPoints.length}
+              </span>
+            </div>
+            <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <motion.div
+                className="h-full bg-black rounded-full"
+                initial={{ width: 0 }}
+                animate={{ width: `${(completedTopics.length / keyPoints.length) * 100}%` }}
+                transition={{ duration: 0.8, ease: 'easeOut' }}
+              />
+            </div>
           </div>
-          <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-            <motion.div
-              className="h-full bg-black rounded-full"
-              initial={{ width: 0 }}
-              animate={{ width: `${(completedTopics.length / keyPoints.length) * 100}%` }}
-              transition={{ duration: 0.8, ease: 'easeOut' }}
-            />
-          </div>
-        </div>
+        )}
       </div>
 
       {/* 核心考点卡片 */}
@@ -90,43 +119,50 @@ export function StudySidebar({
           核心考点
         </h3>
 
-        <div className="space-y-2">
-          {keyPoints.map((point, index) => {
-            const isCompleted = completedTopics.includes(point)
-            return (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.03 }}
-                className={`p-3 rounded-xl border transition-all ${
-                  isCompleted
-                    ? 'bg-gray-50 border-gray-300'
-                    : 'bg-white border-gray-200 hover:border-gray-300 hover:shadow-sm'
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                    isCompleted ? 'bg-black' : 'bg-gray-200'
-                  }`}>
-                    {isCompleted ? (
-                      <CheckCircle2 className="w-3 h-3 text-white" />
-                    ) : (
-                      <div className="w-1.5 h-1.5 rounded-full bg-gray-400" />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <p className={`text-sm leading-relaxed ${
-                      isCompleted ? 'text-gray-500 line-through' : 'text-gray-900'
+        {keyPoints.length === 0 ? (
+          <div className="text-center py-8 text-gray-400 text-sm">
+            <Lightbulb className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <p>开始学习后将显示核心考点</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {keyPoints.map((point, index) => {
+              const isCompleted = completedTopics.includes(point)
+              return (
+                <motion.div
+                  key={index}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.03 }}
+                  className={`p-3 rounded-xl border transition-all ${
+                    isCompleted
+                      ? 'bg-gray-50 border-gray-300'
+                      : 'bg-white border-gray-200 hover:border-gray-300 hover:shadow-sm'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                      isCompleted ? 'bg-black' : 'bg-gray-200'
                     }`}>
-                      {point}
-                    </p>
+                      {isCompleted ? (
+                        <CheckCircle2 className="w-3 h-3 text-white" />
+                      ) : (
+                        <div className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <p className={`text-sm leading-relaxed ${
+                        isCompleted ? 'text-gray-500 line-through' : 'text-gray-900'
+                      }`}>
+                        {point}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              </motion.div>
-            )
-          })}
-        </div>
+                </motion.div>
+              )
+            })}
+          </div>
+        )}
 
         {/* 学习提示 - 极简设计 */}
         <div className="mt-6 p-4 rounded-xl bg-gray-50 border border-gray-200">
@@ -142,17 +178,6 @@ export function StudySidebar({
                   : '尝试挑战更复杂的问题，培养批判性思维。'}
               </p>
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 章节信息 */}
-      <div className="p-6 border-t border-gray-200">
-        <div className="flex items-center gap-3 text-sm">
-          <BookOpen className="w-5 h-5 text-gray-400" />
-          <div>
-            <p className="text-gray-500">当前章节</p>
-            <p className="font-medium text-black">{chapterTitle}</p>
           </div>
         </div>
       </div>

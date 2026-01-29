@@ -1,12 +1,18 @@
 'use client'
 
 /**
- * KnowledgeConstellation - 知识星座图组件
- * 优化版：更精致的视觉效果、流畅动画、优雅的交互
+ * KnowledgeConstellation - 知识星座图组件（增强版）
+ * 功能：
+ * - 节点展开/收起子节点
+ * - 搜索和过滤功能
+ * - 详细信息tooltip
+ * - 移动端适配
+ * - 连线强度可视化
  */
 
-import { useEffect, useRef, useState } from 'react'
-import { motion } from 'framer-motion'
+import { useEffect, useRef, useState, useMemo } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Search, Filter, ChevronDown, ChevronUp, BookOpen, Clock, Lock } from 'lucide-react'
 
 interface KnowledgeNode {
   id: string
@@ -14,6 +20,10 @@ interface KnowledgeNode {
   status: 'completed' | 'in-progress' | 'locked'
   category: string
   value?: number
+  children?: KnowledgeNode[]
+  progress?: number
+  timeSpent?: number
+  description?: string
 }
 
 interface KnowledgeLink {
@@ -30,16 +40,94 @@ interface KnowledgeConstellationProps {
   height?: number
 }
 
-// 默认演示数据
+// 默认演示数据（带子节点和详细信息）
 const DEFAULT_NODES: KnowledgeNode[] = [
-  { id: 'root', label: '核心概念', status: 'completed', category: 'core', value: 3 },
-  { id: 'basic1', label: '基础理论', status: 'completed', category: 'basic', value: 2 },
-  { id: 'basic2', label: '定义与术语', status: 'completed', category: 'basic', value: 2 },
-  { id: 'inter1', label: '应用场景', status: 'in-progress', category: 'intermediate', value: 2 },
-  { id: 'inter2', label: '实际案例', status: 'in-progress', category: 'intermediate', value: 2 },
-  { id: 'adv1', label: '高级应用', status: 'locked', category: 'advanced', value: 1 },
-  { id: 'adv2', label: '边界条件', status: 'locked', category: 'advanced', value: 1 },
-  { id: 'exp1', label: '创新实践', status: 'locked', category: 'expert', value: 1 },
+  {
+    id: 'root',
+    label: '核心概念',
+    status: 'completed',
+    category: 'core',
+    value: 3,
+    progress: 100,
+    timeSpent: 120,
+    description: '基础知识的核心理论',
+    children: [
+      { id: 'root-1', label: '基础定义', status: 'completed', category: 'core', value: 1 },
+      { id: 'root-2', label: '核心原理', status: 'completed', category: 'core', value: 1 }
+    ]
+  },
+  {
+    id: 'basic1',
+    label: '基础理论',
+    status: 'completed',
+    category: 'basic',
+    value: 2,
+    progress: 100,
+    timeSpent: 90,
+    description: '基础理论知识框架',
+    children: [
+      { id: 'basic1-1', label: '概念A', status: 'completed', category: 'basic', value: 1 },
+      { id: 'basic1-2', label: '概念B', status: 'completed', category: 'basic', value: 1 }
+    ]
+  },
+  {
+    id: 'basic2',
+    label: '定义与术语',
+    status: 'completed',
+    category: 'basic',
+    value: 2,
+    progress: 100,
+    timeSpent: 60,
+    description: '关键术语和定义',
+  },
+  {
+    id: 'inter1',
+    label: '应用场景',
+    status: 'in-progress',
+    category: 'intermediate',
+    value: 2,
+    progress: 65,
+    timeSpent: 45,
+    description: '实际应用场景分析',
+    children: [
+      { id: 'inter1-1', label: '场景1', status: 'in-progress', category: 'intermediate', value: 1 },
+      { id: 'inter1-2', label: '场景2', status: 'locked', category: 'intermediate', value: 1 }
+    ]
+  },
+  {
+    id: 'inter2',
+    label: '实际案例',
+    status: 'in-progress',
+    category: 'intermediate',
+    value: 2,
+    progress: 40,
+    timeSpent: 30,
+    description: '真实案例分析',
+  },
+  {
+    id: 'adv1',
+    label: '高级应用',
+    status: 'locked',
+    category: 'advanced',
+    value: 1,
+    description: '需要掌握前置知识',
+  },
+  {
+    id: 'adv2',
+    label: '边界条件',
+    status: 'locked',
+    category: 'advanced',
+    value: 1,
+    description: '需要掌握前置知识',
+  },
+  {
+    id: 'exp1',
+    label: '创新实践',
+    status: 'locked',
+    category: 'expert',
+    value: 1,
+    description: '高级内容，需要全面掌握',
+  },
 ]
 
 const DEFAULT_LINKS: KnowledgeLink[] = [
@@ -66,37 +154,61 @@ export function KnowledgeConstellation({
   const [hoverNode, setHoverNode] = useState<KnowledgeNode | null>(null)
   const [nodePositions, setNodePositions] = useState<Map<string, {x: number, y: number}>>(new Map())
   const [mounted, setMounted] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterStatus, setFilterStatus] = useState<'all' | 'completed' | 'in-progress' | 'locked'>('all')
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
+  const [showSearch, setShowSearch] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
 
   const nodes = propNodes || DEFAULT_NODES
   const links = propLinks || DEFAULT_LINKS
+
+  // 检测移动端
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768)
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   // 等待客户端挂载
   useEffect(() => {
     setMounted(true)
   }, [])
 
+  // 过滤和搜索节点
+  const filteredNodes = useMemo(() => {
+    return nodes.filter(node => {
+      const matchesStatus = filterStatus === 'all' || node.status === filterStatus
+      const matchesSearch = searchQuery === '' ||
+        node.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        node.description?.toLowerCase().includes(searchQuery.toLowerCase())
+      return matchesStatus && matchesSearch
+    })
+  }, [nodes, filterStatus, searchQuery])
+
   // 计算智能布局 - 层次化同心圆
   useEffect(() => {
-    if (!mounted || nodes.length === 0) return
+    if (!mounted || filteredNodes.length === 0) return
 
     // 使用固定的 viewBox 坐标系 (0 0 600 400)
-    const centerX = 300  // viewBox width / 2
-    const centerY = 200  // viewBox height / 2
+    const centerX = 300
+    const centerY = 200
 
     const positions = new Map<string, {x: number, y: number}>()
 
     // 按状态分组节点
-    const completedNodes = nodes.filter(n => n.status === 'completed')
-    const inProgressNodes = nodes.filter(n => n.status === 'in-progress')
-    const lockedNodes = nodes.filter(n => n.status === 'locked')
+    const completedNodes = filteredNodes.filter(n => n.status === 'completed')
+    const inProgressNodes = filteredNodes.filter(n => n.status === 'in-progress')
+    const lockedNodes = filteredNodes.filter(n => n.status === 'locked')
 
     // 动态计算布局
     const levels = [
-      { radius: 0, nodes: completedNodes.slice(0, 1) },  // 核心层：第一个已完成节点
-      { radius: 50, nodes: completedNodes.slice(1) },    // 内圈：其他已完成节点
-      { radius: 90, nodes: inProgressNodes },            // 中圈：进行中节点
-      { radius: 130, nodes: lockedNodes.slice(0, Math.ceil(lockedNodes.length / 2)) },  // 外圈1：部分锁定节点
-      { radius: 160, nodes: lockedNodes.slice(Math.ceil(lockedNodes.length / 2)) }      // 外圈2：剩余锁定节点
+      { radius: 0, nodes: completedNodes.slice(0, 1) },
+      { radius: 50, nodes: completedNodes.slice(1) },
+      { radius: 90, nodes: inProgressNodes },
+      { radius: 130, nodes: lockedNodes.slice(0, Math.ceil(lockedNodes.length / 2)) },
+      { radius: 160, nodes: lockedNodes.slice(Math.ceil(lockedNodes.length / 2)) }
     ]
 
     levels.forEach((level) => {
@@ -106,10 +218,8 @@ export function KnowledgeConstellation({
 
       level.nodes.forEach((node, index) => {
         if (radius === 0) {
-          // 中心节点
           positions.set(node.id, { x: centerX, y: centerY })
         } else {
-          // 圆周节点
           const angle = (index / level.nodes.length) * 2 * Math.PI - Math.PI / 2
           positions.set(node.id, {
             x: centerX + Math.cos(angle) * radius,
@@ -120,9 +230,23 @@ export function KnowledgeConstellation({
     })
 
     setNodePositions(positions)
-  }, [mounted, nodes])
+  }, [mounted, filteredNodes])
 
-  // 根据状态获取节点颜色和发光效果
+  // 切换节点展开状态
+  const toggleNodeExpansion = (nodeId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setExpandedNodes(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(nodeId)) {
+        newSet.delete(nodeId)
+      } else {
+        newSet.add(nodeId)
+      }
+      return newSet
+    })
+  }
+
+  // 根据状态获取节点颜色
   const getNodeStyle = (node: KnowledgeNode) => {
     const colors = {
       completed: { fill: '#000000', glow: 'rgba(0, 0, 0, 0.15)' },
@@ -142,19 +266,89 @@ export function KnowledgeConstellation({
     <div className={className}>
       {/* 标题区域 */}
       <div className="mb-4">
-        <h3 className="text-lg font-semibold text-black">知识星座</h3>
-        <p className="text-sm text-gray-500 mt-1">
-          知识图谱 · 层次化网络 · 动态交互
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-black">知识星座</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              知识图谱 · 动态交互 · 进度追踪
+            </p>
+          </div>
+
+          {/* 搜索和过滤按钮 */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowSearch(!showSearch)}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              title="搜索"
+            >
+              <Search className="w-4 h-4 text-gray-600" />
+            </button>
+            <button
+              onClick={() => {
+                const states: Array<'all' | 'completed' | 'in-progress' | 'locked'> = ['all', 'completed', 'in-progress', 'locked']
+                const currentIndex = states.indexOf(filterStatus)
+                setFilterStatus(states[(currentIndex + 1) % states.length])
+              }}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              title="过滤"
+            >
+              <Filter className="w-4 h-4 text-gray-600" />
+            </button>
+          </div>
+        </div>
+
+        {/* 搜索框 */}
+        <AnimatePresence>
+          {showSearch && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mt-3"
+            >
+              <input
+                type="text"
+                placeholder="搜索知识点..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-black focus:border-transparent outline-none"
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* 过滤状态指示 */}
+        {filterStatus !== 'all' && (
+          <div className="mt-2 flex items-center gap-2">
+            <span className="text-xs text-gray-600">当前过滤：</span>
+            <button
+              onClick={() => setFilterStatus('all')}
+              className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              {legend.find(l => l.status === filterStatus)?.label} ×
+            </button>
+          </div>
+        )}
       </div>
 
       {/* 图例 */}
-      <div className="flex gap-3 mb-4 text-xs">
+      <div className="flex flex-wrap gap-2 mb-4 text-xs">
         {legend.map((item) => (
-          <div key={item.status} className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-gray-50">
-            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
-            <span className="text-gray-600">{item.label}</span>
-          </div>
+          <button
+            key={item.status}
+            onClick={() => setFilterStatus(item.status as any)}
+            className={`flex items-center gap-1.5 px-2 py-1 rounded-full transition-colors ${
+              filterStatus === item.status
+                ? 'bg-black text-white'
+                : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            <div
+              className="w-2 h-2 rounded-full"
+              style={{ backgroundColor: filterStatus === item.status ? '#fff' : item.color }}
+            />
+            <span>{item.label}</span>
+          </button>
         ))}
       </div>
 
@@ -209,11 +403,14 @@ export function KnowledgeConstellation({
               </filter>
             </defs>
 
-            {/* 连线 */}
+            {/* 连线 - 根据强度显示不同粗细和透明度 */}
             {links.map((link, i) => {
               const sourcePos = nodePositions.get(link.source)
               const targetPos = nodePositions.get(link.target)
               if (!sourcePos || !targetPos) return null
+
+              const lineWidth = Math.max(0.5, link.strength * 2)
+              const opacity = Math.max(0.03, link.strength * 0.15)
 
               return (
                 <motion.line
@@ -225,8 +422,8 @@ export function KnowledgeConstellation({
                   y1={sourcePos.y}
                   x2={targetPos.x}
                   y2={targetPos.y}
-                  stroke="rgba(0, 0, 0, 0.04)"
-                  strokeWidth={link.strength * 1.5}
+                  stroke={`rgba(0, 0, 0, ${opacity})`}
+                  strokeWidth={lineWidth}
                   strokeLinecap="round"
                   markerEnd="url(#arrow)"
                 />
@@ -234,13 +431,15 @@ export function KnowledgeConstellation({
             })}
 
             {/* 节点 */}
-            {nodes.map((node, i) => {
+            {filteredNodes.map((node, i) => {
               const pos = nodePositions.get(node.id)
               if (!pos) return null
 
-              const size = (node.value || 1) * 7
+              const size = (node.value || 1) * (isMobile ? 6 : 7)
               const style = getNodeStyle(node)
               const isHovered = hoverNode?.id === node.id
+              const isExpanded = expandedNodes.has(node.id)
+              const hasChildren = node.children && node.children.length > 0
 
               return (
                 <motion.g
@@ -251,9 +450,14 @@ export function KnowledgeConstellation({
                   style={{ cursor: 'pointer' }}
                   onMouseEnter={() => setHoverNode(node)}
                   onMouseLeave={() => setHoverNode(null)}
-                  onClick={() => onNodeClick?.(node)}
+                  onClick={(e) => {
+                    if (hasChildren) {
+                      toggleNodeExpansion(node.id, e)
+                    }
+                    onNodeClick?.(node)
+                  }}
                 >
-                  {/* 外发光（已完成节点）- 带脉冲效果 */}
+                  {/* 已完成节点的脉冲效果 */}
                   {node.status === 'completed' && (
                     <>
                       <motion.circle
@@ -292,18 +496,19 @@ export function KnowledgeConstellation({
                   )}
 
                   {/* 主圆圈 */}
-                  <circle
+                  <motion.circle
                     cx={pos.x}
                     cy={pos.y}
-                    r={isHovered ? size * 1.1 : size}
+                    r={isHovered ? size * 1.15 : size}
                     fill={style.fill}
                     stroke={isHovered ? '#000' : 'rgba(255, 255, 255, 0.9)'}
                     strokeWidth={isHovered ? 2 : 1}
+                    transition={{ duration: 0.2 }}
                   />
 
-                  {/* 内圈（进行中节点） */}
+                  {/* 进行中节点的内圈 */}
                   {node.status === 'in-progress' && (
-                    <circle
+                    <motion.circle
                       cx={pos.x}
                       cy={pos.y}
                       r={size * 0.4}
@@ -313,12 +518,43 @@ export function KnowledgeConstellation({
                     />
                   )}
 
+                  {/* 展开指示器 */}
+                  {hasChildren && (
+                    <g
+                      transform={`translate(${pos.x + size * 0.6}, ${pos.y - size * 0.6})`}
+                    >
+                      <circle
+                        r={size * 0.35}
+                        fill="white"
+                        stroke="#E5E7EB"
+                        strokeWidth={1}
+                      />
+                      {isExpanded ? (
+                        <ChevronUp
+                          width={size * 0.4}
+                          height={size * 0.4}
+                          x={-size * 0.2}
+                          y={-size * 0.2}
+                          color="#6B7280"
+                        />
+                      ) : (
+                        <ChevronDown
+                          width={size * 0.4}
+                          height={size * 0.4}
+                          x={-size * 0.2}
+                          y={-size * 0.2}
+                          color="#6B7280"
+                        />
+                      )}
+                    </g>
+                  )}
+
                   {/* 标签 */}
                   <text
                     x={pos.x}
-                    y={pos.y + size + 10}
+                    y={pos.y + size + (isMobile ? 8 : 10)}
                     textAnchor="middle"
-                    fontSize={10}
+                    fontSize={isMobile ? 9 : 10}
                     fontFamily="Inter, sans-serif"
                     fontWeight={isHovered ? 500 : 400}
                     fill={node.status === 'locked' ? '#9CA3AF' : '#1F2937'}
@@ -340,58 +576,133 @@ export function KnowledgeConstellation({
         </div>
       )}
 
-      {/* 悬停信息卡片 */}
-      {hoverNode && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mt-4 p-4 bg-white border border-gray-200 rounded-xl shadow-sm"
-        >
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-3">
-              <div
-                className="w-8 h-8 rounded-full flex items-center justify-center"
-                style={{
-                  backgroundColor: legend.find(l => l.status === hoverNode.status)?.color
-                }}
-              >
-                {hoverNode.status === 'completed' && (
-                  <span className="text-white text-xs">✓</span>
-                )}
-              </div>
-              <div>
-                <h4 className="font-semibold text-sm">{hoverNode.label}</h4>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  {legend.find(l => l.status === hoverNode.status)?.label}
-                </p>
+      {/* 增强的悬停信息卡片 */}
+      <AnimatePresence>
+        {hoverNode && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            className="mt-4 p-4 bg-white border border-gray-200 rounded-xl shadow-sm"
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex items-start gap-3 flex-1">
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{
+                    backgroundColor: legend.find(l => l.status === hoverNode.status)?.color + '20'
+                  }}
+                >
+                  {hoverNode.status === 'completed' && (
+                    <span className="text-lg">✓</span>
+                  )}
+                  {hoverNode.status === 'in-progress' && (
+                    <BookOpen className="w-5 h-5" style={{ color: legend.find(l => l.status === 'in-progress')?.color }} />
+                  )}
+                  {hoverNode.status === 'locked' && (
+                    <Lock className="w-5 h-5 text-gray-400" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-semibold text-base">{hoverNode.label}</h4>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {legend.find(l => l.status === hoverNode.status)?.label}
+                  </p>
+                  {hoverNode.description && (
+                    <p className="text-sm text-gray-600 mt-2">{hoverNode.description}</p>
+                  )}
+
+                  {/* 进度和时间信息 */}
+                  <div className="mt-3 flex flex-wrap gap-4">
+                    {hoverNode.progress !== undefined && hoverNode.status === 'in-progress' && (
+                      <div className="flex items-center gap-2 text-xs text-gray-600">
+                        <div className="w-16 bg-gray-200 rounded-full h-1.5">
+                          <div
+                            className="bg-black h-1.5 rounded-full transition-all"
+                            style={{ width: `${hoverNode.progress}%` }}
+                          />
+                        </div>
+                        <span>{hoverNode.progress}%</span>
+                      </div>
+                    )}
+                    {hoverNode.timeSpent && (
+                      <div className="flex items-center gap-1 text-xs text-gray-600">
+                        <Clock className="w-3 h-3" />
+                        <span>{hoverNode.timeSpent} 分钟</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 子节点列表 */}
+                  {hoverNode.children && hoverNode.children.length > 0 && (
+                    <div className="mt-3">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          toggleNodeExpansion(hoverNode.id, e)
+                        }}
+                        className="flex items-center gap-1 text-xs text-gray-600 hover:text-black transition-colors"
+                      >
+                        {expandedNodes.has(hoverNode.id) ? (
+                          <ChevronUp className="w-3 h-3" />
+                        ) : (
+                          <ChevronDown className="w-3 h-3" />
+                        )}
+                        <span>{hoverNode.children.length} 个子知识点</span>
+                      </button>
+                      <AnimatePresence>
+                        {expandedNodes.has(hoverNode.id) && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="mt-2 space-y-1 pl-2"
+                          >
+                            {hoverNode.children.map((child) => (
+                              <div
+                                key={child.id}
+                                className="flex items-center gap-2 text-xs py-1 px-2 rounded bg-gray-50"
+                              >
+                                <div
+                                  className={`w-1.5 h-1.5 rounded-full ${
+                                    child.status === 'completed'
+                                      ? 'bg-black'
+                                      : child.status === 'in-progress'
+                                      ? 'bg-gray-400'
+                                      : 'bg-gray-300'
+                                  }`}
+                                />
+                                <span className="text-gray-700">{child.label}</span>
+                              </div>
+                            ))}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        </motion.div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* 简化的统计信息 */}
-      <div className="mt-4 flex justify-center gap-6">
+      {/* 统计信息 */}
+      <div className="mt-4 grid grid-cols-3 gap-2">
         {[
-          { count: nodes.filter(n => n.status === 'completed').length, label: '已掌握', color: 'text-black bg-gray-50 border-gray-200' },
-          { count: nodes.filter(n => n.status === 'in-progress').length, label: '学习中', color: 'text-gray-700 bg-gray-50 border-gray-200' },
-          { count: nodes.filter(n => n.status === 'locked').length, label: '未解锁', color: 'text-gray-600 bg-gray-50 border-gray-200' }
+          { count: nodes.filter(n => n.status === 'completed').length, label: '已掌握', color: 'bg-black text-white' },
+          { count: nodes.filter(n => n.status === 'in-progress').length, label: '学习中', color: 'bg-gray-100 text-gray-700' },
+          { count: nodes.filter(n => n.status === 'locked').length, label: '未解锁', color: 'bg-gray-50 text-gray-600 border border-gray-200' }
         ].map((stat, i) => (
           <motion.div
             key={i}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: i * 0.05 }}
-            className="flex flex-col items-center gap-1 px-4 py-2 rounded-xl border text-center"
-            style={{
-              backgroundColor: stat.color.split(' ')[1] || '#F9FAFB',
-              borderColor: stat.color.split(' ')[2] || '#E5E7EB'
-            }}
+            className={`flex flex-col items-center gap-1 py-3 rounded-xl text-center ${stat.color}`}
           >
-            <span className={`text-2xl font-semibold ${stat.color.split(' ')[0]}`}>
-              {stat.count}
-            </span>
-            <span className="text-xs text-gray-600">{stat.label}</span>
+            <span className="text-xl font-semibold">{stat.count}</span>
+            <span className="text-xs">{stat.label}</span>
           </motion.div>
         ))}
       </div>

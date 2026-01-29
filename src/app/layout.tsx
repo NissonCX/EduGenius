@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import '@/styles/globals.css'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { MobileNav } from '@/components/layout/MobileNav'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ToastProvider } from '@/components/Toast'
 import { AuthProvider } from '@/contexts/AuthContext'
@@ -28,12 +29,20 @@ export default function RootLayout({
         <AuthProvider>
           <ToastProvider>
             <ErrorBoundary>
-              <div className="flex h-screen overflow-hidden">
-                <Sidebar />
-                <main className="flex-1 overflow-y-auto">
+              <div className="flex min-h-screen lg:h-screen lg:overflow-hidden">
+                {/* 桌面端侧边栏 - 移动端隐藏 */}
+                <div className="hidden lg:block">
+                  <Sidebar />
+                </div>
+
+                {/* 主内容区域 - 移动端添加底部内边距以避开导航栏 */}
+                <main className="flex-1 overflow-y-auto lg:overflow-y-auto pb-16 lg:pb-0">
                   {children}
                 </main>
               </div>
+
+              {/* 移动端底部导航 - 仅在移动端显示 */}
+              <MobileNav />
             </ErrorBoundary>
           </ToastProvider>
         </AuthProvider>

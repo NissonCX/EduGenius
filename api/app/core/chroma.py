@@ -42,18 +42,18 @@ def create_document_collection(md5_hash: str) -> str:
     """
     collection_name = get_collection_name(md5_hash)
 
-    # Check if collection already exists
-    existing_collections = [col.name for col in chroma_client.list_collections()]
-    if collection_name in existing_collections:
+    # Check if collection already exists (ChromaDB v0.6.0+)
+    try:
+        # 尝试获取集合，如果存在则直接返回
+        chroma_client.get_collection(collection_name)
         return collection_name
-
-    # Create new collection
-    chroma_client.create_collection(
-        name=collection_name,
-        metadata={"hnsw:space": "cosine"}  # Using cosine similarity
-    )
-
-    return collection_name
+    except Exception:
+        # 集合不存在，创建新集合
+        chroma_client.create_collection(
+            name=collection_name,
+            metadata={"hnsw:space": "cosine"}  # Using cosine similarity
+        )
+        return collection_name
 
 
 def get_document_collection(md5_hash: str):

@@ -10,6 +10,7 @@ import { motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { BookOpen, CheckCircle2 } from 'lucide-react'
+import { getApiUrl } from '@/lib/config'
 
 // 导师风格选项
 const TEACHING_STYLES = [
@@ -62,7 +63,7 @@ export default function RegisterPage() {
     setError('')
 
     try {
-      const response = await fetch('http://localhost:8000/api/users/register', {
+      const response = await fetch(getApiUrl('/api/users/register'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

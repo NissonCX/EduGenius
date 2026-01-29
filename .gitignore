@@ -227,3 +227,8 @@ yarn-error.log*
 .env.development.local
 .env.test.local
 .env.production.local
+
+# Database files
+*.db
+*.sqlite3
+api/chroma_db/

@@ -41,17 +41,18 @@ export function StreamingMessage({ content, isComplete = false }: StreamingMessa
               rehypePlugins={[rehypeKatex]}
               components={{
                 // Mermaid 图表渲染
-                code({ node, inline, className, children, ...props }) {
+                code(props: any) {
+                  const { node, inline, className, children, ...rest } = props
                   const match = /language-mermaid/.exec(className || '')
                   if (!inline && match) {
                     const code = String(children).replace(/\n$/, '')
-                    return <MermaidInText code={code} />
+                    return <MermaidInText text={`\`\`\`mermaid\n${code}\n\`\`\``} />
                   }
 
                   // 普通代码块
                   if (!inline) {
                     return (
-                      <code className={`${className || ''} block`} {...props}>
+                      <code className={`${className || ''} block`} {...rest}>
                         {children}
                       </code>
                     )
@@ -59,7 +60,7 @@ export function StreamingMessage({ content, isComplete = false }: StreamingMessa
 
                   // 行内代码
                   return (
-                    <code className="px-1.5 py-0.5 bg-gray-200 rounded text-sm font-mono" {...props}>
+                    <code className="px-1.5 py-0.5 bg-gray-200 rounded text-sm font-mono" {...rest}>
                       {children}
                     </code>
                   )

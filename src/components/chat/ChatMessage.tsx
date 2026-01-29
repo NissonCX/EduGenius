@@ -11,6 +11,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
+import DOMPurify from 'dompurify'
 import { MermaidInText } from '@/components/visualization/MermaidDiagram'
 import 'katex/dist/katex.min.css'
 
@@ -27,6 +28,19 @@ interface ChatMessageProps {
 
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === 'user'
+
+  // 清理内容，防止 XSS 攻击
+  // 用户消息：严格限制标签
+  // AI 消息：允许更多标签（用于 Markdown 渲染）
+  const sanitizedContent = DOMPurify.sanitize(message.content, {
+    ALLOWED_TAGS: isUser
+      ? ['p', 'br', 'strong', 'em', 'u', 'code', 'pre']
+      : ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a', 'blockquote', 'hr', 'table', 'thead', 'tbody', 'tr', 'td', 'th'],
+    ALLOWED_ATTR: isUser
+      ? []
+      : ['href', 'title', 'class', 'className'],
+    ALLOW_DATA_ATTR: false
+  })
 
   return (
     <motion.div
@@ -55,7 +69,10 @@ export function ChatMessage({ message }: ChatMessageProps) {
         }`}>
           {/* Markdown 渲染 */}
           {isUser ? (
-            <p className="text-sm text-gray-900 whitespace-pre-wrap">{message.content}</p>
+            <p
+              className="text-sm text-gray-900 whitespace-pre-wrap"
+              dangerouslySetInnerHTML={{ __html: sanitizedContent }}
+            />
           ) : (
             <div className="prose prose-sm max-w-none">
               <ReactMarkdown
@@ -63,17 +80,18 @@ export function ChatMessage({ message }: ChatMessageProps) {
                 rehypePlugins={[rehypeKatex]}
                 components={{
                   // Mermaid 图表渲染
-                  code({ node, inline, className, children, ...props }) {
+                  code(props: any) {
+                    const { node, inline, className, children, ...rest } = props
                     const match = /language-mermaid/.exec(className || '')
                     if (!inline && match) {
                       const code = String(children).replace(/\n$/, '')
-                      return <MermaidInText code={code} />
+                      return <MermaidInText text={`\`\`\`mermaid\n${code}\n\`\`\``} />
                     }
 
                     // 普通代码块
                     if (!inline) {
                       return (
-                        <code className={`${className || ''} block`} {...props}>
+                        <code className={`${className || ''} block`} {...rest}>
                           {children}
                         </code>
                       )
@@ -81,7 +99,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
 
                     // 行内代码
                     return (
-                      <code className="px-1.5 py-0.5 bg-gray-200 rounded text-sm font-mono" {...props}>
+                      <code className="px-1.5 py-0.5 bg-gray-200 rounded text-sm font-mono" {...rest}>
                         {children}
                       </code>
                     )

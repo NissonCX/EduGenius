@@ -47,50 +47,58 @@ class DocumentProcessor:
             切分后的文档列表
         """
         try:
-            # 使用 PyMuPDF 解析 PDF
-            doc = fitz.open(file_path)
-            text_content = []
+            # 使用 PyMuPDF 解析 PDF，使用 with 语句确保自动关闭
+            with fitz.open(file_path) as doc:
+                text_content = []
+                total_pages = len(doc)  # 保存页面数量
 
-            for page_num in range(len(doc)):
-                page = doc[page_num]
-                text = page.get_text()
-                if text.strip():
-                    text_content.append({
-                        'page': page_num + 1,
-                        'content': text
+                for page_num in range(total_pages):
+                    try:
+                        page = doc[page_num]
+                        text = page.get_text()
+                        if text.strip():
+                            text_content.append({
+                                'page': page_num + 1,
+                                'content': text
+                            })
+                    except Exception as e:
+                        # 跳过有问题的页面，继续处理其他页面
+                        print(f"警告: 跳过第 {page_num + 1} 页，解析错误: {str(e)}")
+                        continue
+
+                # 如果没有任何内容，抛出错误
+                if not text_content:
+                    raise ValueError("PDF 文件为空或无法提取文本")
+
+                # 合并所有页面文本
+                full_text = "\n\n".join([
+                    f"[第{item['page']}页]\n{item['content']}"
+                    for item in text_content
+                ])
+
+                # 创建元数据
+                base_metadata = {
+                    'source': file_path,
+                    'type': 'pdf',
+                    'total_pages': total_pages
+                }
+                if metadata:
+                    base_metadata.update(metadata)
+
+                # 创建 Document 对象
+                document = Document(page_content=full_text, metadata=base_metadata)
+
+                # 切分文档
+                chunks = self.text_splitter.split_documents([document])
+
+                # 为每个 chunk 添加更多信息
+                for i, chunk in enumerate(chunks):
+                    chunk.metadata.update({
+                        'chunk_id': i,
+                        'total_chunks': len(chunks)
                     })
 
-            doc.close()
-
-            # 合并所有页面文本
-            full_text = "\n\n".join([
-                f"[第{item['page']}页]\n{item['content']}"
-                for item in text_content
-            ])
-
-            # 创建元数据
-            base_metadata = {
-                'source': file_path,
-                'type': 'pdf',
-                'total_pages': len(doc)
-            }
-            if metadata:
-                base_metadata.update(metadata)
-
-            # 创建 Document 对象
-            document = Document(page_content=full_text, metadata=base_metadata)
-
-            # 切分文档
-            chunks = self.text_splitter.split_documents([document])
-
-            # 为每个 chunk 添加更多信息
-            for i, chunk in enumerate(chunks):
-                chunk.metadata.update({
-                    'chunk_id': i,
-                    'total_chunks': len(chunks)
-                })
-
-            return chunks
+                return chunks
 
         except Exception as e:
             raise Exception(f"PDF 解析失败: {str(e)}")
