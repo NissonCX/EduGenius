@@ -91,8 +91,6 @@ async def upload_document(
         existing_document = await get_document_by_md5(db, md5_hash)
 
         if existing_document:
-
-        if existing_document:
             # 文档内容已存在，但为当前用户创建新的文档记录
             # 这样可以复用 ChromaDB 向量数据，但每个用户有独立的学习进度
             

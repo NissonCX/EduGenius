@@ -200,14 +200,28 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, [authState.isAuthenticated, authState.user.id])
 
   // 使用 useMemo 缓存 context value，避免不必要的重新渲染
+  // 只在关键值改变时才重新创建对象
   const value = useMemo<AuthContextType>(() => ({
-    ...authState,
+    user: authState.user,
+    token: authState.token,
+    isAuthenticated: authState.isAuthenticated,
+    isLoading: authState.isLoading,
     login,
     logout,
     updateUser,
     getAuthHeaders,
     checkAuth
-  }), [authState, login, logout, updateUser, getAuthHeaders, checkAuth])
+  }), [
+    authState.user,
+    authState.token,
+    authState.isAuthenticated,
+    authState.isLoading,
+    login,
+    logout,
+    updateUser,
+    getAuthHeaders,
+    checkAuth
+  ])
 
   return (
     <AuthContext.Provider value={value}>
