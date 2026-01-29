@@ -33,6 +33,30 @@ export function StudyCurve({ data = [] }: StudyCurveProps) {
   const [chartData, setChartData] = useState<DataPoint[]>([])
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'all'>('week')
 
+  // 生成示例数据（定义在 useMemo 之前）
+  const generateSampleData = () => {
+    const sampleData: DataPoint[] = []
+    const today = new Date()
+
+    for (let i = 29; i >= 0; i--) {
+      const date = new Date(today)
+      date.setDate(date.getDate() - i)
+
+      // 模拟学习进度增长
+      const baseProgress = 20 + (30 - i) * 2.5 + Math.random() * 10
+      const baseTime = 30 + Math.random() * 60
+
+      sampleData.push({
+        date: date.toISOString().split('T')[0],
+        progress: Math.min(100, Math.round(baseProgress)),
+        timeSpent: Math.round(baseTime),
+        avgScore: Math.round(60 + Math.random() * 35)
+      })
+    }
+
+    return sampleData
+  }
+
   // 生成示例数据（使用 useMemo 避免重复生成）
   const sampleData = useMemo(() => generateSampleData(), [])
 
@@ -57,30 +81,6 @@ export function StudyCurve({ data = [] }: StudyCurveProps) {
   useEffect(() => {
     setChartData(filteredData)
   }, [filteredData])
-
-  // 生成示例数据
-  const generateSampleData = () => {
-    const sampleData: DataPoint[] = []
-    const today = new Date()
-
-    for (let i = 29; i >= 0; i--) {
-      const date = new Date(today)
-      date.setDate(date.getDate() - i)
-
-      // 模拟学习进度增长
-      const baseProgress = 20 + (30 - i) * 2.5 + Math.random() * 10
-      const baseTime = 30 + Math.random() * 60
-
-      sampleData.push({
-        date: date.toISOString().split('T')[0],
-        progress: Math.min(100, Math.round(baseProgress)),
-        timeSpent: Math.round(baseTime),
-        avgScore: Math.round(60 + Math.random() * 35)
-      })
-    }
-
-    return sampleData
-  }
 
   // 格式化日期显示
   const formatDate = (dateStr: string) => {
