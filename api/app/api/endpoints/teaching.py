@@ -162,11 +162,104 @@ async def get_chapter_content(
     Returns:
         Tuple of (chapter_title, chapter_content)
     """
-    # For now, return mock content
-    # In production, retrieve from actual stored content
+    from app.core.chroma import get_document_collection
+    from app.models.document import Document
+    from sqlalchemy import select
+
+    # Get document info
+    doc_result = await db.execute(
+        select(Document).where(Document.id == document_id)
+    )
+    document = doc_result.scalar_one_or_none()
+
+    if not document or not document.md5_hash:
+        return (
+            f"第{chapter_number}章",
+            f"未找到文档内容。"
+        )
+
+    # Get chapter title from progress table
+    from app.models.document import Progress
+    progress_result = await db.execute(
+        select(Progress).where(
+            Progress.document_id == document_id,
+            Progress.chapter_number == chapter_number
+        )
+    )
+    progress = progress_result.scalar_one_or_none()
+
+    chapter_title = progress.chapter_title if progress else f"第{chapter_number}章"
+
+    # Retrieve document chunks from ChromaDB
+    collection = get_document_collection(document.md5_hash)
+    if not collection or collection.count() == 0:
+        return (
+            chapter_title,
+            f"文档内容尚未处理完成，请稍后再试。"
+        )
+
+    # Get all chunks and combine them
+    results = collection.get()
+    if results and results['documents']:
+        # Combine all chunks into full text
+        full_text = "\n\n".join(results['documents'])
+
+        # Try to extract specific chapter content
+        # Look for chapter markers in the text
+        import re
+
+        # Pattern to find the chapter start
+        chapter_patterns = [
+            rf'第{chapter_number}章',
+            rf'第\s*{chapter_number}\s*章',
+            rf'Chapter\s*{chapter_number}',
+        ]
+
+        chapter_start = -1
+        for pattern in chapter_patterns:
+            match = re.search(pattern, full_text)
+            if match:
+                chapter_start = match.start()
+                break
+
+        if chapter_start >= 0:
+            # Try to find where the next chapter starts
+            next_chapter_patterns = [
+                rf'第{chapter_number + 1}章',
+                rf'第\s*{chapter_number + 1}\s*章',
+                rf'Chapter\s*{chapter_number + 1}',
+            ]
+
+            chapter_end = len(full_text)
+            for pattern in next_chapter_patterns:
+                match = re.search(pattern, full_text[chapter_start:])
+                if match:
+                    chapter_end = chapter_start + match.start()
+                    break
+
+            # Extract chapter content
+            chapter_content = full_text[chapter_start:chapter_end].strip()
+
+            # If content is too short, just return full text
+            if len(chapter_content) < 500:
+                chapter_content = full_text
+        else:
+            # No chapter marker found, return full text
+            chapter_content = full_text
+
+        # Limit content length to avoid overwhelming the LLM
+        if len(chapter_content) > 15000:
+            chapter_content = chapter_content[:15000] + "\n\n(内容过长，已截断)"
+
+        # 如果内容太少，给出提示
+        if len(chapter_content) < 500:
+            chapter_content = f"⚠️ 文档内容提取不完整（可能是因为PDF是扫描版）。\n\n当前可用的内容:\n\n{chapter_content}\n\n💡 建议：\n1. 重新上传文字版PDF\n2. 或使用支持OCR的工具处理扫描版PDF"
+
+        return (chapter_title, chapter_content)
+
     return (
-        f"第{chapter_number}章",
-        f"这是第{chapter_number}章的内容。在实际实现中，这里会包含从文档中提取的完整章节文本。"
+        chapter_title,
+        "⚠️ 无法获取文档内容。这可能是因为：\n1. PDF是扫描版，文字无法提取\n2. 文档处理尚未完成\n\n💡 建议：请重新上传文字版PDF教科书。"
     )
 
 

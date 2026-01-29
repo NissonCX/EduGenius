@@ -29,7 +29,7 @@ export function StudyChat({
   className = ''
 }: StudyChatProps) {
   // 使用 useAuth hook 获取真实用户信息
-  const { user, isAuthenticated, getAuthHeaders } = useAuth()
+  const { user, isAuthenticated, isLoading, getAuthHeaders } = useAuth()
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
@@ -349,8 +349,8 @@ export function StudyChat({
 
   return (
     <div className={`flex flex-col h-full bg-white ${className}`}>
-      {/* 🔧 FIX: 只在明确未认证时显示登录提示，不在加载中时显示 */}
-      {isAuthenticated === false || !user.id ? (
+      {/* 🔧 FIX: 只在明确不在加载中且未认证时显示登录提示 */}
+      {!isLoading && (isAuthenticated === false || !user.id) ? (
         <div className="flex items-center justify-center h-full">
           <div className="text-center">
             <p className="text-gray-500 mb-4">请先登录以开始学习</p>

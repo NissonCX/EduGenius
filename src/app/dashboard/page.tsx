@@ -12,10 +12,10 @@ import { getApiUrl } from '@/lib/config'
 
 export default function DashboardPage() {
   const router = useRouter()
-  const { user, isAuthenticated, token } = useAuth()
+  const { user, isAuthenticated, isLoading: authLoading, token } = useAuth()
   const [competencyData, setCompetencyData] = useState<any>(null)
   const [knowledgeGraph, setKnowledgeGraph] = useState<any>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isDataLoading, setIsDataLoading] = useState(true)  // 重命名避免冲突
   const [userStats, setUserStats] = useState<any>(null)
   const [mistakeStats, setMistakeStats] = useState<any>(null)
 
@@ -24,12 +24,13 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const loadData = async () => {
-      if (!isAuthenticated || !user.id) {
-        setIsLoading(false)
+      // 🔧 FIX: 检查认证加载状态，避免在加载期间错误返回
+      if (authLoading || isAuthenticated === false || !user.id) {
+        setIsDataLoading(false)
         return
       }
 
-      setIsLoading(true)
+      setIsDataLoading(true)
       try {
         const documentId = 1 // TODO: 从用户当前学习的文档获取
 
@@ -48,12 +49,12 @@ export default function DashboardPage() {
       } catch (error) {
         console.error('Error loading dashboard data:', error)
       } finally {
-        setIsLoading(false)
+        setIsDataLoading(false)
       }
     }
 
     loadData()
-  }, [user.id, isAuthenticated])
+  }, [user.id, isAuthenticated, authLoading])
 
   // 获取用户统计数据
   const fetchUserStats = async (userId: number, token?: string) => {
@@ -108,8 +109,8 @@ export default function DashboardPage() {
     // 可以在这里添加导航到具体章节的逻辑
   }
 
-  // 🔧 FIX: 只在明确未认证时显示登录提示，不在加载中时显示
-  if (isAuthenticated === false) {
+  // 🔧 FIX: 只在明确不在加载中且未认证时显示登录提示
+  if (!authLoading && isAuthenticated === false) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
@@ -163,7 +164,7 @@ export default function DashboardPage() {
       </section>
 
       {/* Visualization Grid */}
-      {isLoading ? (
+      {isDataLoading || authLoading ? (
         <section className="container-x py-4 sm:py-6 lg:py-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
             {[1, 2].map((i) => (

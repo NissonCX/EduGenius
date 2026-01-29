@@ -51,6 +51,9 @@ class DocumentProcessor:
             with fitz.open(file_path) as doc:
                 text_content = []
                 total_pages = len(doc)  # 保存页面数量
+                empty_pages = 0
+
+                print(f"📖 开始处理 PDF，共 {total_pages} 页")
 
                 for page_num in range(total_pages):
                     try:
@@ -61,14 +64,23 @@ class DocumentProcessor:
                                 'page': page_num + 1,
                                 'content': text
                             })
+                        else:
+                            empty_pages += 1
                     except Exception as e:
                         # 跳过有问题的页面，继续处理其他页面
-                        print(f"警告: 跳过第 {page_num + 1} 页，解析错误: {str(e)}")
+                        print(f"⚠️  跳过第 {page_num + 1} 页，解析错误: {str(e)}")
                         continue
+
+                # 检查是否可能是扫描版PDF
+                if empty_pages > total_pages * 0.5:
+                    print(f"⚠️  警告: {empty_pages}/{total_pages} 页没有提取到文本")
+                    print(f"💡 这可能是扫描版PDF，建议使用支持OCR的工具处理")
 
                 # 如果没有任何内容，抛出错误
                 if not text_content:
-                    raise ValueError("PDF 文件为空或无法提取文本")
+                    raise ValueError("PDF 文件为空或无法提取文本（可能是扫描版PDF）")
+
+                print(f"✅ 成功提取 {len(text_content)}/{total_pages} 页的文本")
 
                 # 合并所有页面文本
                 full_text = "\n\n".join([
@@ -98,10 +110,13 @@ class DocumentProcessor:
                         'total_chunks': len(chunks)
                     })
 
+                print(f"✂️  文档切分完成: {len(chunks)} 个 chunks")
+
                 return chunks
 
         except Exception as e:
-            raise Exception(f"PDF 解析失败: {str(e)}")
+            print(f"❌ PDF 处理失败: {str(e)}")
+            raise
 
     async def process_txt(
         self,

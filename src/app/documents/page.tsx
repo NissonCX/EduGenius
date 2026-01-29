@@ -28,7 +28,7 @@ interface Document {
 
 export default function DocumentsPage() {
   const router = useRouter()
-  const { user, isAuthenticated, getAuthHeaders } = useAuth()
+  const { user, isAuthenticated, isLoading, getAuthHeaders } = useAuth()
   
   // 文档列表
   const [documents, setDocuments] = useState<Document[]>([])
@@ -43,8 +43,8 @@ export default function DocumentsPage() {
 
   // 加载文档列表
   const loadDocuments = useCallback(async () => {
-    // 🔧 FIX: 只在明确未认证时才跳过，不在加载中时跳过
-    if (isAuthenticated === false) {
+    // 🔧 FIX: 只在不在加载中且未认证时才跳过
+    if (!isLoading && isAuthenticated === false) {
       setLoading(false)
       return
     }
@@ -74,6 +74,11 @@ export default function DocumentsPage() {
 
   // 轮询设置
   useEffect(() => {
+    // 🔧 FIX: 在认证加载期间不启动轮询
+    if (isLoading) {
+      return
+    }
+
     let intervalId: NodeJS.Timeout | null = null
 
     const startPolling = async () => {
@@ -100,7 +105,7 @@ export default function DocumentsPage() {
         clearInterval(intervalId)
       }
     }
-  }, [loadDocuments])
+  }, [loadDocuments, isLoading])
 
   // 文件选择
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -208,8 +213,8 @@ export default function DocumentsPage() {
     }
   }
 
-  // 🔧 FIX: 只在明确未认证时显示登录提示，不在加载中时显示
-  if (isAuthenticated === false) {
+  // 🔧 FIX: 只在明确不在加载中且未认证时显示登录提示
+  if (!isLoading && isAuthenticated === false) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">

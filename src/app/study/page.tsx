@@ -50,7 +50,7 @@ interface Subsection {
 function StudyPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { user, isAuthenticated, getAuthHeaders } = useAuth()
+  const { user, isAuthenticated, isLoading, getAuthHeaders } = useAuth()
 
   const docId = searchParams.get('doc')
   const chapterId = searchParams.get('chapter')
@@ -66,8 +66,9 @@ function StudyPageContent() {
 
   // 加载文档列表
   useEffect(() => {
-    // 只在确定未认证时跳转
-    if (isAuthenticated === false) {
+    // 🔧 FIX: 只在确定不在加载中且未认证时跳转
+    // 避免在认证状态初始化期间误跳转到登录页
+    if (!isLoading && isAuthenticated === false) {
       router.push('/login')
       return
     }
@@ -76,24 +77,26 @@ function StudyPageContent() {
     if (!docId && isAuthenticated) {
       loadDocuments()
     }
-  }, [isAuthenticated, docId])
+  }, [isAuthenticated, isLoading, docId])
 
   // 加载章节列表
   useEffect(() => {
-    if (docId && !chapterId && isAuthenticated) {
+    // 🔧 FIX: 添加 isLoading 检查，避免加载期间请求
+    if (docId && !chapterId && isAuthenticated && !isLoading) {
       loadChapters(parseInt(docId))
     }
-  }, [docId, chapterId, isAuthenticated])
+  }, [docId, chapterId, isAuthenticated, isLoading])
 
   // 加载选中的章节
   useEffect(() => {
-    if (docId && chapterId && isAuthenticated) {
+    // 🔧 FIX: 添加 isLoading 检查，避免加载期间请求
+    if (docId && chapterId && isAuthenticated && !isLoading) {
       const chapterNum = parseInt(chapterId)
       if (!isNaN(chapterNum)) {
         loadSelectedChapter(parseInt(docId), chapterNum)
       }
     }
-  }, [docId, chapterId, isAuthenticated])
+  }, [docId, chapterId, isAuthenticated, isLoading])
 
   // 同步用户的教学风格
   useEffect(() => {
