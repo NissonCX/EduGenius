@@ -30,38 +30,34 @@ interface StudyCurveProps {
 }
 
 export function StudyCurve({ data = [] }: StudyCurveProps) {
-  const [chartData, setChartData] = useState<DataPoint[]>([])
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'all'>('week')
 
-  // 生成示例数据（定义在 useMemo 之前）
-  const generateSampleData = () => {
-    const sampleData: DataPoint[] = []
+  // 生成示例数据（直接在 useMemo 中定义）
+  const sampleData = useMemo(() => {
+    const result: DataPoint[] = []
     const today = new Date()
 
     for (let i = 29; i >= 0; i--) {
       const date = new Date(today)
       date.setDate(date.getDate() - i)
 
-      // 模拟学习进度增长
-      const baseProgress = 20 + (30 - i) * 2.5 + Math.random() * 10
-      const baseTime = 30 + Math.random() * 60
+      // 使用固定的种子避免随机变化
+      const baseProgress = 20 + (30 - i) * 2.5
+      const baseTime = 30 + (i % 7) * 10  // 基于索引的确定性值
 
-      sampleData.push({
+      result.push({
         date: date.toISOString().split('T')[0],
         progress: Math.min(100, Math.round(baseProgress)),
         timeSpent: Math.round(baseTime),
-        avgScore: Math.round(60 + Math.random() * 35)
+        avgScore: Math.round(60 + (i % 4) * 10)
       })
     }
 
-    return sampleData
-  }
-
-  // 生成示例数据（使用 useMemo 避免重复生成）
-  const sampleData = useMemo(() => generateSampleData(), [])
+    return result
+  }, [])
 
   // 根据时间范围过滤数据
-  const filteredData = useMemo(() => {
+  const chartData = useMemo(() => {
     const useData = data.length > 0 ? data : sampleData
 
     const now = new Date()
@@ -76,11 +72,6 @@ export function StudyCurve({ data = [] }: StudyCurveProps) {
 
     return useData.filter(d => new Date(d.date) >= cutoffDate)
   }, [data, timeRange, sampleData])
-
-  // 初始化 chartData
-  useEffect(() => {
-    setChartData(filteredData)
-  }, [filteredData])
 
   // 格式化日期显示
   const formatDate = (dateStr: string) => {
