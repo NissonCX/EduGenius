@@ -232,3 +232,10 @@ yarn-error.log*
 *.db
 *.sqlite3
 api/chroma_db/
+
+# Test scripts
+test_*.sh
+quick_check.sh
+*_progress.py
+migrate_*.py
+create_*.py
