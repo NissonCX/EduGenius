@@ -219,10 +219,12 @@ async def upload_document(
 
         # 🔍 智能混合处理：使用 HybridDocumentProcessor
         if file_type == "pdf":
+            logger.info("🎯 检测到PDF文件，将使用HybridDocumentProcessor处理")
             try:
                 from app.services.hybrid_document_processor import HybridDocumentProcessor
                 from app.utils.pdf_validator import validate_pdf_before_upload
 
+                logger.info("✅ HybridDocumentProcessor导入成功")
                 print(f"\n{'='*60}")
                 print(f"🔬 智能混合处理模式")
                 print(f"{'='*60}\n")
