@@ -202,6 +202,49 @@ async def upload_document(
 
         print(f"📖 开始解析 {file_type} 文档...")
 
+        # 🔍 PDF 预检查：判断是否有文本层
+        if file_type == "pdf":
+            try:
+                from app.utils.pdf_validator import validate_pdf_before_upload
+                validation = validate_pdf_before_upload(tmp_file_path)
+
+                print(f"\n{'='*60}")
+                print(f"📋 PDF 预检查结果:")
+                print(f"   总页数: {validation['total_pages']}")
+                print(f"   文本页: {validation['text_pages']}")
+                print(f"   图片页: {validation['image_pages']}")
+                print(f"   文本占比: {validation['text_ratio']:.1%}")
+                print(f"   是否扫描版: {'⚠️  是' if validation['is_scan'] else '✅ 否'}")
+
+                if validation['sample_text']:
+                    print(f"   示例文本: {validation['sample_text'][:80]}...")
+
+                print(f"{'='*60}\n")
+
+                # 如果是扫描版 PDF，给出详细提示
+                if validation['is_scan']:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail={
+                            "error": "扫描版PDF不支持",
+                            "message": "这个PDF文件是扫描版（纯图片），无法直接提取文本。",
+                            "validation": validation,
+                            "suggestions": [
+                                "使用 PDF 转文字工具处理（如 Adobe Acrobat、ABBYY FineReader）",
+                                "寻找该教材的电子版（出版社官网或学术数据库）",
+                                "将扫描版 PDF 转换为带文本层的 PDF"
+                            ]
+                        }
+                    )
+                elif validation['text_ratio'] < 0.3:
+                    # 部分页面是扫描版，给出警告但继续处理
+                    print(f"⚠️  警告: 这个 PDF 有 {validation['image_pages']} 页是扫描版，可能会影响识别效果")
+
+            except HTTPException:
+                raise  # 重新抛出 HTTPException
+            except Exception as e:
+                print(f"⚠️  PDF 预检查失败: {e}，继续处理...")
+
         # 解析文档、切分、向量化（添加超时保护）
         try:
             result = await asyncio.wait_for(
@@ -813,11 +856,32 @@ async def delete_document(
         )
     
     # 🔧 FIX: 级联删除相关数据
-    print(f"🗑️  开始删除文档 {document_id} 及其相关数据...")
+    print(f"\n{'='*60}")
+    print(f"🗑️  开始删除文档 {document_id} ({document.filename})")
+    print(f"{'='*60}\n")
 
     from sqlalchemy import text
 
+    # 0. 先统计要删除的数据
+    print("📊 统计要删除的数据:")
+    stats_check = text("""
+        SELECT
+            (SELECT COUNT(*) FROM conversations WHERE document_id = :doc_id AND user_id = :user_id) as conversations,
+            (SELECT COUNT(*) FROM progress WHERE document_id = :doc_id AND user_id = :user_id) as progress,
+            (SELECT COUNT(*) FROM subsections WHERE document_id = :doc_id AND user_id = :user_id) as subsections
+    """)
+    stats = await db.execute(stats_check, {
+        'doc_id': document_id,
+        'user_id': current_user.id
+    })
+    row = stats.fetchone()
+    print(f"   - 对话记录: {row[0]} 条")
+    print(f"   - 学习进度: {row[1]} 条")
+    print(f"   - 小节记录: {row[2]} 条")
+    print()
+
     # 1. 删除对话记录 (conversations 表)
+    print("🗑️  步骤 1/6: 删除对话记录...")
     conversation_delete = text("""
         DELETE FROM conversations
         WHERE document_id = :document_id AND user_id = :user_id
@@ -895,11 +959,21 @@ async def delete_document(
     )
     await db.commit()
 
-    print(f"   ✅ 文档 {document_id} 及其所有相关数据已清理完成\n")
+    print(f"\n{'='*60}")
+    print(f"✅ 文档删除完成")
+    print(f"   文档ID: {document_id}")
+    print(f"   文件名: {document.filename}")
+    print(f"   已删除:")
+    print(f"      - 对话记录: {conversation_count} 条")
+    print(f"      - 测试记录: {quiz_count} 条")
+    print(f"      - 学习进度: {progress_count} 条")
+    print(f"      - 小节记录: {subsection_count} 条")
+    print(f"{'='*60}\n")
 
     return {
         "message": "文档删除成功",
         "document_id": document_id,
+        "document_title": document.title,
         "deleted_records": {
             "conversations": conversation_count,
             "quiz_attempts": quiz_count,
