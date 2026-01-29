@@ -43,7 +43,8 @@ export default function DocumentsPage() {
 
   // 加载文档列表
   const loadDocuments = useCallback(async () => {
-    if (!isAuthenticated) {
+    // 🔧 FIX: 只在明确未认证时才跳过，不在加载中时跳过
+    if (isAuthenticated === false) {
       setLoading(false)
       return
     }
@@ -207,8 +208,8 @@ export default function DocumentsPage() {
     }
   }
 
-  // 未登录
-  if (!isAuthenticated) {
+  // 🔧 FIX: 只在明确未认证时显示登录提示，不在加载中时显示
+  if (isAuthenticated === false) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">

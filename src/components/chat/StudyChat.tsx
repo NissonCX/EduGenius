@@ -349,8 +349,8 @@ export function StudyChat({
 
   return (
     <div className={`flex flex-col h-full bg-white ${className}`}>
-      {/* 如果用户未登录，显示提示 */}
-      {!isAuthenticated || !user.id ? (
+      {/* 🔧 FIX: 只在明确未认证时显示登录提示，不在加载中时显示 */}
+      {isAuthenticated === false || !user.id ? (
         <div className="flex items-center justify-center h-full">
           <div className="text-center">
             <p className="text-gray-500 mb-4">请先登录以开始学习</p>

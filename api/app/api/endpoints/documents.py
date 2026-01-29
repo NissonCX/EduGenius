@@ -139,28 +139,46 @@ async def upload_document(
                 title=title or file.filename
             )
             
-            # 为新用户创建章节（从 ChromaDB 恢复文本）
+            # 为新用户创建章节（从原始文件提取目录）
             try:
-                from app.services.chapter_divider import ChapterDivider
+                from app.services.chapter_divider_enhanced import EnhancedChapterDivider
+                from app.services.document_processor_v2 import EnhancedDocumentProcessor
                 from app.core.chroma import get_document_collection
-                
-                divider = ChapterDivider()
-                
-                # 从 ChromaDB 恢复文档文本
-                collection = get_document_collection(md5_hash)
-                if collection and collection.count() > 0:
-                    results = collection.get()
-                    if results and results['documents']:
-                        document_text = "\n\n".join(results['documents'])
-                        
-                        chapters = await divider.divide_document_into_chapters(
-                            document_id=new_document.id,
-                            user_id=current_user.id,
-                            document_text=document_text,
-                            db=db
-                        )
-                        
-                        print(f"✅ 为新用户创建了 {len(chapters)} 个章节")
+
+                divider = EnhancedChapterDivider()
+                toc_text = ""
+
+                # 尝试从原始 PDF 文件提取目录
+                if existing_document.file_type == "pdf":
+                    try:
+                        enhanced_processor = EnhancedDocumentProcessor()
+                        # 使用原始文件路径
+                        original_file = f"uploads/{current_user.id}_{existing_document.filename}"
+                        if os.path.exists(original_file):
+                            # 🔧 FIX: 增加到15页，确保包含完整目录
+                            _, toc_text = enhanced_processor.extract_toc_pages(original_file, max_toc_pages=15)
+                            print(f"📚 从现有 PDF 提取了目录: {len(toc_text)} 字符")
+                    except Exception as e:
+                        print(f"⚠️  从 PDF 提取目录失败: {e}")
+
+                # 如果没有 TOC，尝试从 ChromaDB 获取前几个 chunks
+                if not toc_text:
+                    collection = get_document_collection(md5_hash)
+                    if collection and collection.count() > 0:
+                        results = collection.get()
+                        if results and results['documents']:
+                            # 只使用前几个 chunks 作为 TOC 的 fallback
+                            toc_text = "\n\n".join(results['documents'][:3])
+
+                if toc_text:
+                    chapters = await divider.divide_document_into_chapters(
+                        document_id=new_document.id,
+                        user_id=current_user.id,
+                        document_text=toc_text,
+                        db=db
+                    )
+
+                    print(f"✅ 为新用户创建了 {len(chapters)} 个章节")
             except Exception as e:
                 print(f"⚠️  章节划分失败: {str(e)}")
                 import traceback
@@ -200,6 +218,30 @@ async def upload_document(
                 status_code=status.HTTP_408_REQUEST_TIMEOUT,
                 detail="文档处理超时（超过5分钟），请尝试上传较小的文件"
             )
+
+        # 🎯 如果是 PDF，使用智能解析器提取目录（书签优先 + 启发式扫描）
+        toc_text = ""
+        if file_type == "pdf":
+            try:
+                from app.core.textbook_parser import TextbookParser
+                parser = TextbookParser()
+
+                parse_result = await parser.parse_textbook(tmp_file_path, db)
+                toc_text = parse_result['toc_text']
+
+                source = parse_result['source']  # 'bookmark' or 'scan'
+                pages = parse_result['pages']
+                need_ai = parse_result.get('need_ai_guess', False)
+
+                print(f"📚 智能解析完成:")
+                print(f"   来源: {source}")
+                print(f"   页码: {pages}")
+                print(f"   文本长度: {len(toc_text)} 字符")
+                if need_ai:
+                    print(f"   ⚠️  需要AI辅助识别")
+            except Exception as e:
+                print(f"⚠️  智能解析失败: {e}，使用fallback")
+                toc_text = ""
 
         # 创建数据库记录
         from app.schemas.document import DocumentCreate
@@ -246,23 +288,51 @@ async def upload_document(
             title=title or file.filename
         )
 
-        # 🎯 核心：自动划分章节
+        # 🎯 核心：自动划分章节（使用增强版服务）
         try:
-            from app.services.chapter_divider import ChapterDivider
+            # 使用增强版章节划分服务
+            from app.services.chapter_divider_enhanced import EnhancedChapterDivider
 
-            divider = ChapterDivider()
-            # 使用所有文本内容，而不是只用第一个
-            document_text = "\n\n".join(result['texts']) if result['texts'] else ""
+            divider = EnhancedChapterDivider()
 
-            if document_text:
+            # 使用增强版处理器提取的目录文本
+            # 如果 toc_text 为空（比如 txt 文件），使用常规文本
+            if not toc_text:
+                # 对于非 PDF 或提取失败的情况，使用前几个 chunks
+                toc_text = "\n\n".join([c.page_content for c in chunks[:3]])
+
+            if toc_text:
+                print(f"📚 发送目录文本给 LLM，长度: {len(toc_text)} 字符")
+
                 chapters = await divider.divide_document_into_chapters(
                     document_id=new_document.id,
                     user_id=current_user.id,
-                    document_text=document_text,
+                    document_text=toc_text,  # 只发送目录文本
                     db=db
                 )
 
                 print(f"✅ 文档处理完成，共划分 {len(chapters)} 个章节")
+
+                # 更新文档的章节数
+                await update_document_status(
+                    db,
+                    new_document.id,
+                    status="completed",
+                    total_chapters=len(chapters)
+                )
+            else:
+                print("⚠️ 未能提取到目录文本")
+                # 创建默认章节
+                await create_progress(
+                    db,
+                    ProgressCreate(
+                        user_id=current_user.id,
+                        document_id=new_document.id,
+                        chapter_number=1,
+                        chapter_title=title or file.filename,
+                        cognitive_level_assigned=current_user.cognitive_level
+                    )
+                )
         except Exception as e:
             print(f"⚠️  章节划分失败: {str(e)}")
             import traceback
@@ -410,6 +480,38 @@ async def get_document_chapters(
     )
     all_progress = progress_result.scalars().all()
 
+    # 获取所有小节记录（使用原生SQL，避免ORM问题）
+    from collections import defaultdict
+    from sqlalchemy import text
+    subsections_by_chapter = defaultdict(list)
+
+    try:
+        subsection_query = text("""
+            SELECT chapter_number, subsection_number, subsection_title,
+                   page_number, completion_percentage, time_spent_minutes
+            FROM subsections
+            WHERE user_id = :user_id AND document_id = :document_id
+            ORDER BY chapter_number, subsection_number
+        """)
+
+        result = await db.execute(
+            subsection_query,
+            {"user_id": current_user.id, "document_id": document_id}
+        )
+
+        rows = result.fetchall()
+        for row in rows:
+            subsections_by_chapter[row[0]].append({
+                "subsection_number": row[1],
+                "subsection_title": row[2],
+                "page_number": row[3],
+                "completion_percentage": row[4],
+                "time_spent_minutes": row[5]
+            })
+    except Exception as e:
+        print(f"⚠️  无法加载小节数据: {e}")
+        # 继续执行，只是不包含小节数据
+
     # 解锁阈值配置
     UNLOCK_CONFIG = {
         "completion_threshold": 0.7,  # 70% 完成度
@@ -501,7 +603,9 @@ async def get_document_chapters(
             "status_text": status_text,
             "time_spent_minutes": progress.time_spent_minutes,
             "quiz_attempts": progress.quiz_attempts,
-            "quiz_success_rate": progress.quiz_success_rate
+            "quiz_success_rate": progress.quiz_success_rate,
+            "subsections": subsections_by_chapter.get(progress.chapter_number, []),
+            "subsection_count": len(subsections_by_chapter.get(progress.chapter_number, []))
         })
 
     return {
@@ -708,11 +812,99 @@ async def delete_document(
             detail="无权限删除此文档"
         )
     
-    # 删除文档
+    # 🔧 FIX: 级联删除相关数据
+    print(f"🗑️  开始删除文档 {document_id} 及其相关数据...")
+
+    from sqlalchemy import text
+
+    # 1. 删除对话记录 (conversations 表)
+    conversation_delete = text("""
+        DELETE FROM conversations
+        WHERE document_id = :document_id AND user_id = :user_id
+    """)
+    result = await db.execute(conversation_delete, {
+        'document_id': document_id,
+        'user_id': current_user.id
+    })
+    conversation_count = result.rowcount
+    print(f"   ✅ 删除了 {conversation_count} 条对话记录")
+
+    # 2. 删除学习进度记录 (progress 表) - 先获取要删除的 progress_id
+    progress_ids_query = text("""
+        SELECT id FROM progress
+        WHERE document_id = :document_id AND user_id = :user_id
+    """)
+    progress_result = await db.execute(progress_ids_query, {
+        'document_id': document_id,
+        'user_id': current_user.id
+    })
+    progress_ids = [row[0] for row in progress_result.fetchall()]
+
+    # 3. 删除测试记录 (quiz_attempts 表) - 通过 progress_id
+    quiz_count = 0
+    if progress_ids:
+        # 构建 IN 子句
+        placeholders = ','.join([f':pid{i}' for i in range(len(progress_ids))])
+        params = {f'pid{i}': pid for i, pid in enumerate(progress_ids)}
+        quiz_delete = text(f"""
+            DELETE FROM quiz_attempts
+            WHERE progress_id IN ({placeholders})
+        """)
+        quiz_result = await db.execute(quiz_delete, params)
+        quiz_count = quiz_result.rowcount
+        print(f"   ✅ 删除了 {quiz_count} 条测试记录")
+
+    # 现在删除进度记录
+    progress_delete = text("""
+        DELETE FROM progress
+        WHERE document_id = :document_id AND user_id = :user_id
+    """)
+    result = await db.execute(progress_delete, {
+        'document_id': document_id,
+        'user_id': current_user.id
+    })
+    progress_count = result.rowcount
+    print(f"   ✅ 删除了 {progress_count} 条学习进度记录")
+
+    # 4. 删除小节记录 (subsections 表)
+    subsection_delete = text("""
+        DELETE FROM subsections
+        WHERE document_id = :document_id AND user_id = :user_id
+    """)
+    result = await db.execute(subsection_delete, {
+        'document_id': document_id,
+        'user_id': current_user.id
+    })
+    subsection_count = result.rowcount
+    print(f"   ✅ 删除了 {subsection_count} 条小节记录")
+
+    # 5. 删除 ChromaDB 中的向量集合
+    try:
+        from app.core.chroma import delete_document_collection
+        deleted = delete_document_collection(document.md5_hash)
+        if deleted:
+            print(f"   ✅ 删除了 ChromaDB 向量集合")
+        else:
+            print(f"   ⚠️  ChromaDB 集合不存在")
+    except Exception as e:
+        print(f"   ⚠️  删除 ChromaDB 数据失败: {e}")
+
+    # 4. 删除文档记录
     await db.execute(
         delete(Document).where(Document.id == document_id)
     )
     await db.commit()
-    
-    return {"message": "文档删除成功", "document_id": document_id}
+
+    print(f"   ✅ 文档 {document_id} 及其所有相关数据已清理完成\n")
+
+    return {
+        "message": "文档删除成功",
+        "document_id": document_id,
+        "deleted_records": {
+            "conversations": conversation_count,
+            "quiz_attempts": quiz_count,
+            "progress": progress_count,
+            "subsections": subsection_count
+        }
+    }
 

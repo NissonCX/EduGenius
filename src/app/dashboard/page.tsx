@@ -108,8 +108,8 @@ export default function DashboardPage() {
     // 可以在这里添加导航到具体章节的逻辑
   }
 
-  // 如果用户未登录，显示提示
-  if (!isAuthenticated) {
+  // 🔧 FIX: 只在明确未认证时显示登录提示，不在加载中时显示
+  if (isAuthenticated === false) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">

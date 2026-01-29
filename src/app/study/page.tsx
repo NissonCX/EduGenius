@@ -35,6 +35,16 @@ interface Chapter {
   lock_reason: string | null
   status_icon: string
   status_text: string
+  subsections?: Subsection[]
+  subsection_count?: number
+}
+
+interface Subsection {
+  subsection_number: string
+  subsection_title: string
+  page_number?: number
+  completion_percentage: number
+  time_spent_minutes: number
 }
 
 function StudyPageContent() {
@@ -44,6 +54,7 @@ function StudyPageContent() {
 
   const docId = searchParams.get('doc')
   const chapterId = searchParams.get('chapter')
+  const subsectionId = searchParams.get('subsection')  // 新增小节参数
 
   const [documents, setDocuments] = useState<Document[]>([])
   const [chapters, setChapters] = useState<Chapter[]>([])
@@ -51,32 +62,38 @@ function StudyPageContent() {
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null)
   const [loading, setLoading] = useState(true)
   const [teachingStyle, setTeachingStyle] = useState(user?.teachingStyle || 3)
+  const [expandedChapter, setExpandedChapter] = useState<number | null>(null)  // 控制章节展开
 
   // 加载文档列表
   useEffect(() => {
-    if (!isAuthenticated) {
+    // 只在确定未认证时跳转
+    if (isAuthenticated === false) {
       router.push('/login')
       return
     }
 
-    if (!docId) {
+    // 正在加载中或已认证
+    if (!docId && isAuthenticated) {
       loadDocuments()
     }
   }, [isAuthenticated, docId])
 
   // 加载章节列表
   useEffect(() => {
-    if (docId && !chapterId) {
+    if (docId && !chapterId && isAuthenticated) {
       loadChapters(parseInt(docId))
     }
-  }, [docId, chapterId])
+  }, [docId, chapterId, isAuthenticated])
 
   // 加载选中的章节
   useEffect(() => {
-    if (docId && chapterId) {
-      loadSelectedChapter(parseInt(docId), parseInt(chapterId))
+    if (docId && chapterId && isAuthenticated) {
+      const chapterNum = parseInt(chapterId)
+      if (!isNaN(chapterNum)) {
+        loadSelectedChapter(parseInt(docId), chapterNum)
+      }
     }
-  }, [docId, chapterId])
+  }, [docId, chapterId, isAuthenticated])
 
   // 同步用户的教学风格
   useEffect(() => {
@@ -316,6 +333,56 @@ function StudyPageContent() {
                         animate={{ width: `${chapter.completion_percentage}%` }}
                         transition={{ duration: 0.8, ease: 'easeOut' }}
                       />
+                    </div>
+                  )}
+
+                  {/* 小节列表 */}
+                  {chapter.subsections && chapter.subsections.length > 0 && (
+                    <div className="mb-4">
+                      <button
+                        onClick={() => setExpandedChapter(expandedChapter === chapter.chapter_number ? null : chapter.chapter_number)}
+                        className="flex items-center gap-2 text-sm text-gray-600 hover:text-black mb-2 transition-colors"
+                      >
+                        <ChevronRight
+                          className={`w-4 h-4 transition-transform ${
+                            expandedChapter === chapter.chapter_number ? 'rotate-90' : ''
+                          }`}
+                        />
+                        <span>{chapter.subsection_count}个小节</span>
+                      </button>
+
+                      <AnimatePresence>
+                        {expandedChapter === chapter.chapter_number && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="overflow-hidden"
+                          >
+                            <div className="pl-6 pr-2 pb-2 space-y-1">
+                              {chapter.subsections.map((subsection) => (
+                                <button
+                                  key={subsection.subsection_number}
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    router.push(`/study?doc=${docId}&chapter=${chapter.chapter_number}&subsection=${subsection.subsection_number}`)
+                                  }}
+                                  className="w-full text-left px-3 py-2 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors flex items-center gap-2 group"
+                                >
+                                  <span className="text-xs font-medium text-gray-500 group-hover:text-black">
+                                    {subsection.subsection_number}
+                                  </span>
+                                  <span className="text-sm text-gray-700 group-hover:text-black flex-1">
+                                    {subsection.subsection_title}
+                                  </span>
+                                  <MessageSquare className="w-3 h-3 text-gray-400 group-hover:text-black" />
+                                </button>
+                              ))}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   )}
 
