@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Send, Loader2, User, Bot } from 'lucide-react'
 import { Message } from '@/types/chat'
 import { ChatMessage } from './ChatMessage'
+import { StreamingMessage } from './StreamingMessage'
 import { TypingIndicator } from './TypingIndicator'
 import { StrictnessMenu } from './StrictnessMenu'
 import { useAuth } from '@/contexts/AuthContext'
@@ -176,7 +177,7 @@ export function StudyChat({
     scrollToBottom()
   }, [messages, streamingContent])
 
-  // SSE 流式响应
+  // SSE 流式响应（优化版）
   const startStreaming = async (userMessage: string) => {
     setIsStreaming(true)
     setStreamingContent('')
@@ -190,9 +191,13 @@ export function StudyChat({
           chapter_id: chapterId,
           student_level: currentStyle,
           stream: true,
-          user_id: user.id // 传递真实用户 ID
+          user_id: user.id
         })
       })
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
 
       const reader = response.body?.getReader()
       const decoder = new TextDecoder()
@@ -200,7 +205,9 @@ export function StudyChat({
       if (!reader) throw new Error('No reader available')
 
       let buffer = ''
-      let fullContent = '' // 本地累积完整内容
+      let fullContent = ''
+      let chunkCount = 0
+      const startTime = Date.now()
 
       while (true) {
         const { done, value } = await reader.read()
@@ -211,22 +218,44 @@ export function StudyChat({
         buffer = lines.pop() || ''
 
         for (const line of lines) {
+          if (line.trim() === '') continue
           if (line.startsWith('data: ')) {
-            const data = line.slice(6)
+            const data = line.slice(6).trim()
             if (data === '[DONE]') continue
 
             try {
               const parsed = JSON.parse(data)
+
+              // 处理不同类型的 SSE 数据
               if (parsed.content) {
+                chunkCount++
                 fullContent += parsed.content
+
+                // 打字机效果：逐字符累积
                 setStreamingContent(fullContent)
+
+                // 调试日志（开发时使用）
+                if (process.env.NODE_ENV === 'development') {
+                  console.log(`Chunk ${chunkCount}:`, parsed.content?.substring(0, 20))
+                }
+              } else if (parsed.error) {
+                throw new Error(parsed.error)
+              } else if (parsed.status) {
+                // 处理状态更新
+                console.log('Stream status:', parsed.status)
               }
             } catch (e) {
-              // 忽略解析错误
+              // JSON 解析错误，记录但继续处理
+              if (process.env.NODE_ENV === 'development') {
+                console.warn('Failed to parse SSE data:', data, e)
+              }
             }
           }
         }
       }
+
+      const duration = Date.now() - startTime
+      console.log(`Streaming complete: ${chunkCount} chunks in ${duration}ms`)
 
       // 流式结束，保存完整消息
       if (fullContent) {
@@ -243,8 +272,10 @@ export function StudyChat({
           await saveConversationToDB(userMessage, fullContent)
         } catch (saveError) {
           console.error('保存对话失败:', saveError)
-          // 不影响用户体验，静默失败
         }
+      } else {
+        // 没有收到内容，显示错误消息
+        throw new Error('未收到响应内容')
       }
 
     } catch (error) {
@@ -253,14 +284,14 @@ export function StudyChat({
 
       console.error('Streaming error:', apiError)
 
-      // 降级处理：显示友好的错误提示
-      const fallbackMessage: Message = {
+      // 显示友好的错误提示
+      const errorMessage: Message = {
         id: Date.now().toString(),
         role: 'assistant',
         content: `⚠️ ${friendlyMessage}\n\n请稍后重试，或检查网络连接。`,
         timestamp: new Date()
       }
-      setMessages(prev => [...prev, fallbackMessage])
+      setMessages(prev => [...prev, errorMessage])
     } finally {
       setIsStreaming(false)
       setStreamingContent('')
@@ -353,19 +384,8 @@ export function StudyChat({
 
         {/* 流式消息（打字机效果） */}
         {isStreaming && streamingContent && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex gap-3"
-          >
-            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
-              <Bot className="w-5 h-5 text-gray-600" />
-            </div>
-            <div className="flex-1 max-w-3xl">
-              <div className="bg-gray-50 rounded-2xl rounded-tl-sm p-4 border border-gray-100">
-                <div className="prose prose-sm max-w-none">
-                  {/* 这里会使用打字机效果组件渲染 */}
-                  <span>{streamingContent}</span>
+          <StreamingMessage content={streamingContent} isComplete={false} />
+        )}
                   <span className="inline-block w-0.5 h-4 bg-gray-800 animate-pulse ml-0.5" />
                 </div>
               </div>
