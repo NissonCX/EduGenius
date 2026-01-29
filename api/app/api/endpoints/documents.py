@@ -3,6 +3,7 @@ FastAPI endpoints for document upload and processing with MD5 deduplication.
 """
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 from typing import Optional
 import tempfile
 import os
@@ -20,6 +21,7 @@ from app.crud.document import (
 from app.services.document_processor import process_uploaded_document, DocumentProcessor
 from app.core.chroma import create_document_collection, add_document_chunks
 from app.core.security import get_current_user
+from app.core.logging_config import get_logger
 from app.schemas.document import (
     DocumentUploadResponse,
     DocumentResponse,
@@ -27,6 +29,8 @@ from app.schemas.document import (
     ProgressCreate
 )
 from app.models.document import User
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -200,6 +204,17 @@ async def upload_document(
                 detail=f"不支持的文件类型: {file_type}。支持的格式: pdf, txt"
             )
 
+        # 创建数据库记录（必须在处理之前创建，以便获取document_id）
+        from app.schemas.document import DocumentCreate
+        document_data = DocumentCreate(
+            filename=file.filename,
+            file_type=file_type,
+            file_size=len(content),
+            md5_hash=md5_hash
+        )
+
+        new_document = await create_document(db, document_data, current_user.id)
+
         print(f"📖 开始解析 {file_type} 文档...")
 
         # 🔍 智能混合处理：使用 HybridDocumentProcessor
@@ -229,10 +244,6 @@ async def upload_document(
 
                 # 使用混合处理器处理文档
                 processor = HybridDocumentProcessor()
-
-                # 添加到后台任务或直接处理
-                # TODO: 这里应该使用 BackgroundTasks 或 Celery
-                # 为了演示，我们先同步处理，但更新状态为处理中
 
                 # 更新状态为处理中
                 await db.execute(
@@ -267,7 +278,6 @@ async def upload_document(
                     logger.info(f"🔐 OCR 任务 {task_id} 获得处理权限")
 
                 # 异步处理（使用 asyncio.create_task）
-                # 注意：这只是演示，生产环境应该使用 Celery
                 async def process_document_async():
                     try:
                         result = await processor.process_document(
@@ -278,15 +288,15 @@ async def upload_document(
                             db=db
                         )
 
-                        print(f"\n✅ 文档 {new_document.id} 处理完成:")
-                        print(f"   路径: {result.get('path')}")
-                        print(f"   耗时: {result.get('processing_time', 0):.1f}秒")
-                        print(f"   OCR置信度: {result.get('ocr_confidence', 0):.1%}\n")
+                        logger.info(
+                            f"✅ 文档 {new_document.id} 处理完成: "
+                            f"路径={result.get('path')}, "
+                            f"耗时={result.get('processing_time', 0):.1f}秒, "
+                            f"OCR置信度={result.get('ocr_confidence', 0):.1%}"
+                        )
 
                     except Exception as e:
-                        print(f"❌ 文档 {new_document.id} 处理失败: {e}")
-                        import traceback
-                        traceback.print_exc()
+                        logger.error(f"❌ 文档 {new_document.id} 处理失败: {e}", exc_info=True)
 
                         # 更新状态为失败
                         await db.execute(
@@ -310,9 +320,22 @@ async def upload_document(
             except HTTPException:
                 raise  # 重新抛出 HTTPException
             except Exception as e:
-                print(f"⚠️  PDF 预检查失败: {e}，继续处理...")
+                # PDF处理失败，记录错误并返回失败状态
+                logger.error(f"❌ PDF 处理失败: {e}", exc_info=True)
 
-        # 解析文档、切分、向量化（添加超时保护）
+                # 更新状态为失败
+                await db.execute(
+                    text("UPDATE documents SET processing_status = :status WHERE id = :id"),
+                    {"status": "failed", "id": new_document.id}
+                )
+                await db.commit()
+
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"文档处理失败: {str(e)}"
+                )
+
+        # TXT文件处理：解析文档、切分、向量化（添加超时保护）
         try:
             result = await asyncio.wait_for(
                 process_uploaded_document(
@@ -350,19 +373,8 @@ async def upload_document(
                 if need_ai:
                     print(f"   ⚠️  需要AI辅助识别")
             except Exception as e:
-                print(f"⚠️  智能解析失败: {e}，使用fallback")
+                logger.warning(f"⚠️  智能解析失败: {e}，使用fallback")
                 toc_text = ""
-
-        # 创建数据库记录
-        from app.schemas.document import DocumentCreate
-        document_data = DocumentCreate(
-            filename=file.filename,
-            file_type=file_type,
-            file_size=os.path.getsize(tmp_file_path),
-            md5_hash=md5_hash
-        )
-
-        new_document = await create_document(db, document_data, current_user.id)
 
         # 创建 ChromaDB collection（以 MD5 命名）
         create_document_collection(md5_hash)
