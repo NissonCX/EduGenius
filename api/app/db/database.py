@@ -7,14 +7,16 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from typing import AsyncGenerator
 import os
 
-# Database URL (SQLite for development)
-DATABASE_URL = "sqlite+aiosqlite:///./edugenius.db"
+from app.core.config import DATABASE_URL
 
 # Create async engine
 engine = create_async_engine(
     DATABASE_URL,
     echo=False,  # Set to True for SQL query logging
-    connect_args={"check_same_thread": False}  # Needed for SQLite
+    connect_args={
+        "check_same_thread": False,  # Needed for SQLite
+        "timeout": 30  # 增加超时时间避免锁定
+    }
 )
 
 # Create async session factory

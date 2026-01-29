@@ -20,7 +20,7 @@ class Settings:
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "120"))  # 默认 2 小时
 
     # 数据库配置
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./edugenius.db")
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./edugenius.db?check_same_thread=False")
 
     # ChromaDB 配置
     CHROMA_PERSIST_DIR: str = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")

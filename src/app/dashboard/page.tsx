@@ -53,7 +53,7 @@ export default function DashboardPage() {
     }
 
     loadData()
-  }, [user.id, isAuthenticated, token])
+  }, [user.id, isAuthenticated])
 
   // 获取用户统计数据
   const fetchUserStats = async (userId: number, token?: string) => {

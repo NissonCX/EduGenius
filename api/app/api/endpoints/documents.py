@@ -54,20 +54,25 @@ async def upload_document(
     5. DashScope 向量化
     6. 存入 ChromaDB
     7. 创建数据库记录
+
+    注意：大文件处理可能需要较长时间，请耐心等待
     """
+    import asyncio
+    from app.core.config import settings
+
     # 文件大小限制（50MB）
     MAX_FILE_SIZE = 50 * 1024 * 1024
-    
+
     # 读取文件内容
     content = await file.read()
-    
+
     # 检查文件大小
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"文件过大，最大支持 {MAX_FILE_SIZE // (1024*1024)}MB"
         )
-    
+
     # 保存到临时文件
     tmp_file_path = None
     try:
@@ -75,12 +80,17 @@ async def upload_document(
             tmp_file.write(content)
             tmp_file_path = tmp_file.name
 
+        print(f"📄 开始处理文档: {file.filename} ({len(content)} bytes)")
+
         # 计算文档处理器
         processor = DocumentProcessor()
         md5_hash = processor.calculate_md5(tmp_file_path)
+        print(f"🔐 MD5: {md5_hash}")
 
         # 检查是否已存在
         existing_document = await get_document_by_md5(db, md5_hash)
+
+        if existing_document:
 
         if existing_document:
             # 文档内容已存在，但为当前用户创建新的文档记录
@@ -174,12 +184,24 @@ async def upload_document(
                 detail=f"不支持的文件类型: {file_type}。支持的格式: pdf, txt"
             )
 
-        # 解析文档、切分、向量化
-        result = await process_uploaded_document(
-            file_path=tmp_file_path,
-            title=title or file.filename,
-            user_email=current_user.email
-        )
+        print(f"📖 开始解析 {file_type} 文档...")
+
+        # 解析文档、切分、向量化（添加超时保护）
+        try:
+            result = await asyncio.wait_for(
+                process_uploaded_document(
+                    file_path=tmp_file_path,
+                    title=title or file.filename,
+                    user_email=current_user.email
+                ),
+                timeout=300.0  # 5分钟超时
+            )
+            print(f"✅ 文档解析完成: {len(result.get('chunks', []))} 个 chunks")
+        except asyncio.TimeoutError:
+            raise HTTPException(
+                status_code=status.HTTP_408_REQUEST_TIMEOUT,
+                detail="文档处理超时（超过5分钟），请尝试上传较小的文件"
+            )
 
         # 创建数据库记录
         from app.schemas.document import DocumentCreate

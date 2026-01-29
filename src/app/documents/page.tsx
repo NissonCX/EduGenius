@@ -55,17 +55,50 @@ export default function DocumentsPage() {
 
       if (response.ok) {
         const data = await response.json()
-        setDocuments(data.documents || [])
+        const docs = data.documents || []
+        setDocuments(docs)
+
+        // 检查是否有正在处理的文档
+        const hasProcessing = docs.some((doc: Document) => doc.processing_status === 'processing')
+        return hasProcessing  // 返回是否还有正在处理的文档
       }
+      return false
     } catch (err) {
       console.error('加载文档失败:', err)
+      return false
     } finally {
       setLoading(false)
     }
-  }, [isAuthenticated])  // 只依赖 isAuthenticated
+  }, [isAuthenticated])
 
+  // 轮询设置
   useEffect(() => {
-    loadDocuments()
+    let intervalId: NodeJS.Timeout | null = null
+
+    const startPolling = async () => {
+      const hasProcessing = await loadDocuments()
+
+      // 如果有正在处理的文档，启动轮询
+      if (hasProcessing) {
+        intervalId = setInterval(async () => {
+          const stillProcessing = await loadDocuments()
+          // 如果没有正在处理的文档了，停止轮询
+          if (!stillProcessing && intervalId) {
+            clearInterval(intervalId)
+            intervalId = null
+          }
+        }, 3000)  // 每3秒轮询一次
+      }
+    }
+
+    startPolling()
+
+    // 清理函数
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId)
+      }
+    }
   }, [loadDocuments])
 
   // 文件选择
