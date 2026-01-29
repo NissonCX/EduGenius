@@ -202,7 +202,7 @@ async def submit_answer(
         db.add(progress)
         await db.flush()  # 获取 ID
 
-    # 记录答题尝试
+    # 记录答题尝试（使用 competency_dimension 而不是重新分类）
     attempt = QuizAttempt(
         user_id=submission.user_id,
         progress_id=progress.id,

@@ -106,6 +106,12 @@ export default function QuizPage() {
     setShowResult(true);
   };
 
+  const handleCompetencyUpdate = (competencyData: any) => {
+    // 可以在这里触发全局状态更新
+    console.log('Competency data updated:', competencyData);
+    // TODO: 更新全局能力数据状态或触发Dashboard刷新
+  };
+
   const handleRetry = () => {
     setShowResult(false);
     setQuizResults(null);
@@ -194,6 +200,9 @@ export default function QuizPage() {
           onComplete={handleQuizComplete}
           documentId={parseInt(documentId!)}
           chapterNumber={parseInt(chapterNumber!)}
+          userId={user?.id}
+          token={token}
+          onCompetencyUpdate={handleCompetencyUpdate}
         />
       </div>
     </div>

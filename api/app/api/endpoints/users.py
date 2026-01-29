@@ -75,6 +75,71 @@ def classify_question_type(question_text: str) -> str:
     return max(scores, key=scores.get)
 
 
+def calculate_competency_scores_v2(quiz_attempts_with_questions) -> Dict[str, int]:
+    """
+    基于答题记录计算六维能力评分（使用Question表中的competency_dimension）
+
+    Args:
+        quiz_attempts_with_questions: (QuizAttempt, Question) 元组列表
+
+    Returns:
+        Dict[str, int]: 六维能力评分
+    """
+    # 初始化各维度的数据
+    dimensions = {
+        'comprehension': {'correct': 0, 'total': 0},
+        'logic': {'correct': 0, 'total': 0},
+        'terminology': {'correct': 0, 'total': 0},
+        'memory': {'correct': 0, 'total': 0},
+        'application': {'correct': 0, 'total': 0},
+        'stability': {'first_attempts': [], 'repeats': 0}
+    }
+
+    for attempt, question in quiz_attempts_with_questions:
+        # 使用 Question 表中的 competency_dimension
+        dimension = question.competency_dimension or 'comprehension'
+
+        if dimension in dimensions and dimension != 'stability':
+            dimensions[dimension]['total'] += 1
+            if attempt.is_correct:
+                dimensions[dimension]['correct'] += 1
+
+        # 用于计算稳定性（基于重复答题）
+        question_key = f"{question.id}"
+        if question_key not in dimensions['stability']:
+            dimensions['stability']['first_attempts'].append(attempt.is_correct)
+        dimensions['stability']['repeats'] += 1
+
+    # 计算各维度得分
+    scores = {}
+
+    for dimension, data in dimensions.items():
+        if dimension == 'stability':
+            # 计算稳定性
+            first_attempts = data['first_attempts']
+            if first_attempts:
+                stability_score = int((sum(first_attempts) / len(first_attempts)) * 100)
+                scores[dimension] = stability_score
+            else:
+                scores[dimension] = 50
+        else:
+            if data['total'] == 0:
+                scores[dimension] = 50
+            else:
+                # 正确率 * 100
+                accuracy_rate = data['correct'] / data['total']
+                base_score = accuracy_rate * 100
+
+                # 数量加成：题目越多，分数越可信
+                count_bonus = min(10, data['total'] * 2)
+
+                # 最终分数
+                final_score = min(100, max(0, int(base_score + count_bonus)))
+                scores[dimension] = final_score
+
+    return scores
+
+
 def calculate_competency_scores(quiz_attempts: List[QuizAttempt]) -> Dict[str, int]:
     """
     基于答题记录计算六维能力评分
@@ -523,16 +588,20 @@ async def get_user_history(
     result = await db.execute(query)
     conversations = result.scalars().all()
 
-    # 获取能力评估数据（从最近的题目尝试记录计算）
-    competency_result = await db.execute(
-        select(QuizAttempt).where(
-            QuizAttempt.user_id == user_id
-        ).order_by(QuizAttempt.created_at.desc()).limit(50)
-    )
-    quiz_attempts = competency_result.scalars().all()
+    # 获取能力评估数据（从最近的题目尝试记录计算，关联Question表）
+    from app.models.document import Question as QuestionModel
 
-    # 计算六个维度的能力评分（基于真实答题数据）
-    competency_scores = calculate_competency_scores(list(quiz_attempts))
+    competency_result = await db.execute(
+        select(QuizAttempt, QuestionModel)
+        .join(QuestionModel, QuizAttempt.question_id == QuestionModel.id)
+        .where(QuizAttempt.user_id == user_id)
+        .order_by(QuizAttempt.created_at.desc())
+        .limit(50)
+    )
+    quiz_attempts_with_questions = competency_result.all()
+
+    # 计算六个维度的能力评分（使用 Question 表中的 competency_dimension）
+    competency_scores = calculate_competency_scores_v2(quiz_attempts_with_questions)
 
     return HistoryResponse(
         conversations=[

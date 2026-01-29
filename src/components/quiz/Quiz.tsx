@@ -20,6 +20,9 @@ interface QuizProps {
   onComplete: (results: QuizResults) => void;
   documentId?: number;
   chapterNumber?: number;
+  userId?: number;
+  token?: string;
+  onCompetencyUpdate?: (competencyData: any) => void;
 }
 
 interface QuizResults {
@@ -29,7 +32,7 @@ interface QuizResults {
   answers: { questionId: number; userAnswer: string; isCorrect: boolean }[];
 }
 
-export default function Quiz({ questions, onComplete, documentId, chapterNumber }: QuizProps) {
+export default function Quiz({ questions, onComplete, documentId, chapterNumber, userId, token, onCompetencyUpdate }: QuizProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<string>('');
   const [userAnswers, setUserAnswers] = useState<{ questionId: number; userAnswer: string }[]>([]);
@@ -93,7 +96,7 @@ export default function Quiz({ questions, onComplete, documentId, chapterNumber 
   };
 
   // Submit entire quiz
-  const handleSubmitQuiz = () => {
+  const handleSubmitQuiz = async () => {
     const correctCount = userAnswers.reduce((count, answer) => {
       const question = questions.find(q => q.id === answer.questionId);
       if (!question) return count;
@@ -113,6 +116,27 @@ export default function Quiz({ questions, onComplete, documentId, chapterNumber 
         };
       })
     };
+
+    // 刷新能力数据
+    if (userId && token && onCompetencyUpdate) {
+      try {
+        const response = await fetch(`http://localhost:8000/api/users/${userId}/history`, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.competency_scores) {
+            onCompetencyUpdate(data.competency_scores);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to refresh competency data:', error);
+      }
+    }
 
     onComplete(results);
   };
