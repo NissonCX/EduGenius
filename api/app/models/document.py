@@ -58,6 +58,11 @@ class Document(Base):
     processing_status = Column(String(50), default="pending")  # pending, processing, completed, failed
     chroma_collection_name = Column(String(100))  # ChromaDB collection name (MD5-based)
 
+    # OCR-related fields
+    has_text_layer = Column(Integer, default=1)  # 1 = has text layer, 0 = scanned/OCR
+    ocr_confidence = Column(Float, default=0.0)  # OCR confidence score (0-1)
+    current_page = Column(Integer, default=0)  # Current processing page (for OCR progress)
+
     # Owner
     uploaded_by = Column(Integer, ForeignKey("users.id"))
 

@@ -75,6 +75,10 @@ class TeachingState(TypedDict):
     # ========== Streaming ==========
     streaming_content: Annotated[Optional[str], "Content for SSE streaming"]
 
+    # ========== OCR Metadata ==========
+    is_ocr_document: Annotated[bool, "Whether document was processed via OCR"]
+    ocr_confidence: Annotated[float, "OCR confidence score (0.0-1.0)"]
+
 
 class QuizQuestion(TypedDict):
     """Structure for a quiz question."""

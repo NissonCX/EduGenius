@@ -13,6 +13,9 @@ from sqlalchemy import text
 from app.core.ocr_engine import get_ocr_engine
 from app.utils.pdf_validator import validate_pdf_before_upload
 from app.services.document_processor import DocumentProcessor
+from app.core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class HybridDocumentProcessor:
@@ -66,17 +69,19 @@ class HybridDocumentProcessor:
             if progress_callback:
                 progress_callback('detecting', 0, 1)
 
-            print(f"\n{'='*60}")
-            print(f"🔍 阶段 1/4: 检测 PDF 类型")
-            print(f"{'='*60}\n")
+            logger.info("="*60)
+            logger.info("🔍 阶段 1/4: 检测 PDF 类型")
+            logger.info("="*60)
 
             validation = validate_pdf_before_upload(file_path)
 
-            print(f"📊 检测结果:")
-            print(f"   总页数: {validation['total_pages']}")
-            print(f"   文本页: {validation['text_pages']}")
-            print(f"   文本占比: {validation['text_ratio']:.1%}")
-            print(f"   是否扫描版: {'⚠️  是' if validation['is_scan'] else '✅ 否'}\n")
+            logger.info(
+                f"📊 检测结果: "
+                f"总页数={validation['total_pages']}, "
+                f"文本页={validation['text_pages']}, "
+                f"文本占比={validation['text_ratio']:.1%}, "
+                f"是否扫描版={'是' if validation['is_scan'] else '否'}"
+            )
 
             # 更新数据库：记录检测结果
             await self._update_document_status(
@@ -101,9 +106,7 @@ class HybridDocumentProcessor:
                 )
 
         except Exception as e:
-            print(f"❌ 文档处理失败: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"❌ 文档处理失败: {e}", exc_info=True)
 
             # 更新状态为失败
             await self._update_document_status(
@@ -130,17 +133,14 @@ class HybridDocumentProcessor:
     ) -> Dict[str, Any]:
         """快速路径：直接提取文本"""
 
-        print(f"✅ 选择快速路径（Fast Path）")
-        print(f"   原因: PDF 有 {validation['text_ratio']:.1%} 的页面包含文本层\n")
+        logger.info(f"✅ 选择快速路径（Fast Path）：PDF 有 {validation['text_ratio']:.1%} 的页面包含文本层")
 
         try:
             # ========== 阶段2: 提取文本 ==========
             if progress_callback:
                 progress_callback('extracting', 1, 3)
 
-            print(f"{'='*60}")
-            print(f"📖 阶段 2/4: 提取文本（快速路径）")
-            print(f"{'='*60}\n")
+            logger.info("📖 阶段 2/4: 提取文本（快速路径）")
 
             # 使用现有的处理器
             from app.services.document_processor import process_uploaded_document
@@ -154,9 +154,7 @@ class HybridDocumentProcessor:
             if progress_callback:
                 progress_callback('vectorizing', 2, 3)
 
-            print(f"{'='*60}")
-            print(f"🧠 阶段 3/4: 向量化并存储")
-            print(f"{'='*60}\n")
+            logger.info("🧠 阶段 3/4: 向量化并存储")
 
             # 向量化已经在 process_uploaded_document 中完成
             chunks = result.get('chunks', [])
@@ -174,11 +172,11 @@ class HybridDocumentProcessor:
                 ocr_confidence=1.0  # 文本提取的置信度为100%
             )
 
-            print(f"{'='*60}")
-            print(f"✅ 处理完成（快速路径）")
-            print(f"   耗时: {processing_time:.1f}秒")
-            print(f"   Chunks: {len(chunks)}")
-            print(f"{'='*60}\n")
+            logger.info(
+                f"✅ 处理完成（快速路径）："
+                f"耗时={processing_time:.1f}秒, "
+                f"Chunks={len(chunks)}"
+            )
 
             return {
                 'success': True,
@@ -210,8 +208,7 @@ class HybridDocumentProcessor:
     ) -> Dict[str, Any]:
         """OCR路径：使用PaddleOCR识别"""
 
-        print(f"⏱️  选择 OCR 路径（OCR Path）")
-        print(f"   原因: 只有 {validation['text_ratio']:.1%} 的页面有文本层\n")
+        logger.info(f"⏱️  选择 OCR 路径（OCR Path）：只有 {validation['text_ratio']:.1%} 的页面有文本层")
 
         try:
             # 更新状态为 OCR 处理中
@@ -224,13 +221,11 @@ class HybridDocumentProcessor:
             if progress_callback:
                 progress_callback('ocr', 0, validation['total_pages'])
 
-            print(f"{'='*60}")
-            print(f"🔬 阶段 2/4: OCR 文字识别")
-            print(f"{'='*60}\n")
+            logger.info("🔬 阶段 2/4: OCR 文字识别")
 
             # 定义进度回调
             def ocr_progress(current: int, total: int, message: str):
-                print(f"   {message}")
+                logger.info(f"   {message}")
                 if progress_callback:
                     progress_callback('ocr', current, total)
 
@@ -260,14 +255,12 @@ class HybridDocumentProcessor:
             if progress_callback:
                 progress_callback('processing', 1, 3)
 
-            print(f"\n{'='*60}")
-            print(f"📝 阶段 3/4: 文本后处理")
-            print(f"{'='*60}\n")
+            logger.info("📝 阶段 3/4: 文本后处理")
 
             # 使用OCR提取的文本
             extracted_text = ocr_result['full_text']
 
-            print(f"   提取文本长度: {len(extracted_text)} 字符")
+            logger.info(f"   提取文本长度: {len(extracted_text)} 字符")
 
             # TODO: 这里可以进行文本后处理
             # - 格式校正
@@ -278,12 +271,28 @@ class HybridDocumentProcessor:
             if progress_callback:
                 progress_callback('vectorizing', 2, 3)
 
-            print(f"\n{'='*60}")
-            print(f"🧠 阶段 4/4: 向量化并存储")
-            print(f"{'='*60}\n")
+            logger.info("🧠 阶段 4/4: 向量化并提取章节")
 
-            # TODO: 使用提取的文本进行向量化和存储
-            # 这里需要调用现有的向量化逻辑
+            # 使用OCR提取的文本进行章节划分
+            try:
+                from app.services.chapter_divider_enhanced import EnhancedChapterDivider
+
+                divider = EnhancedChapterDivider()
+
+                logger.info("📚 开始从OCR文本中提取章节...")
+
+                # 提取章节
+                chapters = await divider.divide_document_into_chapters(
+                    document_id=document_id,
+                    user_id=user_id,
+                    document_text=ocr_result['full_text'],
+                    db=db
+                )
+
+                logger.info(f"✅ 成功提取 {len(chapters)} 个章节")
+
+            except Exception as e:
+                logger.warning(f"⚠️  章节提取失败: {e}", exc_info=True)
 
             processing_time = time.time() - start_time
 
@@ -298,12 +307,12 @@ class HybridDocumentProcessor:
                 ocr_confidence=ocr_result['avg_confidence']
             )
 
-            print(f"\n{'='*60}")
-            print(f"✅ OCR 处理完成")
-            print(f"   耗时: {processing_time:.1f}秒")
-            print(f"   平均置信度: {ocr_result['avg_confidence']:.1%}")
-            print(f"   识别页数: {ocr_result['processed_pages']}/{ocr_result['total_pages']}")
-            print(f"{'='*60}\n")
+            logger.info(
+                f"✅ OCR 处理完成: "
+                f"耗时={processing_time:.1f}秒, "
+                f"平均置信度={ocr_result['avg_confidence']:.1%}, "
+                f"识别页数={ocr_result['processed_pages']}/{ocr_result['total_pages']}"
+            )
 
             return {
                 'success': True,

@@ -16,7 +16,10 @@ from app.agents.state.teaching_state import TeachingState
 from app.agents.graphs.teaching_graph import create_simple_teaching_flow, TeachingStreamHandler
 from app.core.security import get_current_user, get_current_user_optional
 from app.models.document import User
+from app.core.logging_config import get_logger
 from langchain_core.messages import HumanMessage, AIMessage
+
+logger = get_logger(__name__)
 
 
 router = APIRouter(prefix="/api/teaching", tags=["teaching"])
@@ -77,7 +80,7 @@ async def cleanup_expired_sessions():
             del active_sessions[session_id]
 
         if expired_sessions:
-            print(f"🧹 清理了 {len(expired_sessions)} 个过期 session")
+            logger.info(f"🧹 清理了 {len(expired_sessions)} 个过期 session")
 
         # 如果仍然超过最大数量，移除最旧的
         if len(active_sessions) > MAX_SESSIONS:
@@ -90,11 +93,11 @@ async def cleanup_expired_sessions():
             num_to_remove = len(active_sessions) - MAX_SESSIONS
             for session_id, _ in sessions_by_age[:num_to_remove]:
                 del active_sessions[session_id]
-            
-            print(f"🧹 清理了 {num_to_remove} 个最旧的 session")
+
+            logger.info(f"🧹 清理了 {num_to_remove} 个最旧的 session")
 
     except Exception as e:
-        print(f"❌ 清理 session 失败: {e}")
+        logger.error(f"❌ 清理 session 失败: {e}")
 
 
 async def session_cleanup_task():
@@ -107,10 +110,10 @@ async def session_cleanup_task():
             await asyncio.sleep(300)  # 5 分钟
             await cleanup_expired_sessions()
         except asyncio.CancelledError:
-            print("🛑 Session 清理任务已停止")
+            logger.info("🛑 Session 清理任务已停止")
             break
         except Exception as e:
-            print(f"❌ Session 清理任务异常: {e}")
+            logger.error(f"❌ Session 清理任务异常: {e}")
             # 继续运行，不要因为单次错误而停止
 
 
@@ -124,7 +127,7 @@ def start_session_cleanup_task() -> asyncio.Task:
     global _cleanup_task
     if _cleanup_task is None or _cleanup_task.done():
         _cleanup_task = asyncio.create_task(session_cleanup_task())
-        print("✅ Session 清理任务已启动")
+        logger.info("✅ Session 清理任务已启动")
     return _cleanup_task
 
 
@@ -286,6 +289,36 @@ async def start_teaching_session(
         request.chapter_number
     )
 
+    # Check if document is OCR-generated
+    from app.models.document import Document
+    from sqlalchemy import select
+
+    doc_result = await db.execute(
+        select(Document).where(Document.id == request.document_id)
+    )
+    document = doc_result.scalar_one_or_none()
+
+    is_ocr_document = False
+    ocr_warning_message = None
+
+    if document and document.has_text_layer == 0:
+        is_ocr_document = True
+        ocr_confidence = document.ocr_confidence or 0.0
+        ocr_warning_message = (
+            "📖 **OCR识别说明**\n\n"
+            f"我已通过AI视觉识别技术读取了这本扫描教材（识别置信度：{ocr_confidence*100:.1f}%）。\n\n"
+            "**请注意**：\n"
+            "• 某些复杂公式、符号可能存在细微偏差\n"
+            "• 建议您结合原书核对重要内容\n"
+            "• 我会尽力为您提供准确的学习指导\n\n"
+            "让我们开始学习吧！"
+        )
+
+    # Create initial conversation history with OCR warning if applicable
+    conversation_history = []
+    if ocr_warning_message:
+        conversation_history.append(AIMessage(content=ocr_warning_message))
+
     # Create initial state
     initial_state: TeachingState = {
         # Student Information
@@ -312,12 +345,16 @@ async def start_teaching_session(
         "feedback": None,
 
         # Session State
-        "conversation_history": [],
+        "conversation_history": conversation_history,
         "current_step": "init",
         "needs_level_adjustment": False,
 
         # Streaming
-        "streaming_content": None
+        "streaming_content": None,
+
+        # OCR metadata
+        "is_ocr_document": is_ocr_document,
+        "ocr_confidence": document.ocr_confidence if document else 0.0
     }
 
     # Store session with timestamp
