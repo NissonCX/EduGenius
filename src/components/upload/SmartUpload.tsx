@@ -6,7 +6,7 @@
  * 支持混合处理架构：
  * 1. 预检测 PDF 文本层
  * 2. 快速路径（有文本层）或 OCR 路径（扫描件）
- * 3. 实时进度展示
+ * 3. 实时进度展示（平滑插值）
  * 4. OCR 完成后显示特殊标签
  */
 
@@ -14,6 +14,44 @@ import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Upload, FileText, CheckCircle2, Loader2, AlertCircle, Eye, Sparkles } from 'lucide-react'
 import { getApiUrl } from '@/lib/config'
+
+// 平滑进度插值 Hook
+function useSmoothProgress(targetProgress: number, duration: number = 600) {
+  const [smoothProgress, setSmoothProgress] = useState(0)
+
+  useEffect(() => {
+    if (targetProgress === 0) {
+      setSmoothProgress(0)
+      return
+    }
+
+    const startValue = smoothProgress
+    const difference = targetProgress - startValue
+    const startTime = Date.now()
+
+    const animate = () => {
+      const now = Date.now()
+      const elapsed = now - startTime
+      const progress = Math.min(elapsed / duration, 1)
+
+      // 使用 easeOutQuart 缓动函数 - 让进度看起来像人类在思考
+      const easeOutQuart = (t: number) => 1 - Math.pow(1 - t, 4)
+      const currentValue = startValue + difference * easeOutQuart(progress)
+
+      setSmoothProgress(currentValue)
+
+      if (progress < 1) {
+        requestAnimationFrame(animate)
+      } else {
+        setSmoothProgress(targetProgress)
+      }
+    }
+
+    requestAnimationFrame(animate)
+  }, [targetProgress, duration])
+
+  return smoothProgress
+}
 
 // 处理阶段
 type ProcessingStage =
@@ -49,9 +87,12 @@ interface SmartUploadProps {
 export function SmartUpload({ onUploadComplete, onError }: SmartUploadProps) {
   const [file, setFile] = useState<File | null>(null)
   const [stage, setStage] = useState<ProcessingStage>('idle')
-  const [progress, setProgress] = useState(0)
+  const [rawProgress, setRawProgress] = useState(0) // 原始进度
   const [status, setStatus] = useState<ProcessingStatus | null>(null)
   const [error, setError] = useState<string>('')
+
+  // 使用平滑进度
+  const displayProgress = useSmoothProgress(rawProgress)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -86,7 +127,7 @@ export function SmartUpload({ onUploadComplete, onError }: SmartUploadProps) {
     setFile(selectedFile)
     setError('')
     setStage('uploading')
-    setProgress(0)
+    setRawProgress(0)
 
     // 开始上传
     uploadFile(selectedFile)
@@ -103,7 +144,7 @@ export function SmartUpload({ onUploadComplete, onError }: SmartUploadProps) {
       let uploadProgress = 0
       const uploadInterval = setInterval(() => {
         uploadProgress += 10
-        setProgress(uploadProgress)
+        setRawProgress(uploadProgress)
         if (uploadProgress >= 90) {
           clearInterval(uploadInterval)
         }
@@ -150,13 +191,13 @@ export function SmartUpload({ onUploadComplete, onError }: SmartUploadProps) {
       const data: ProcessingStatus = await response.json()
       setStatus(data)
 
-      // 更新进度和阶段
-      setProgress(data.progress_percentage)
+      // 更新进度和阶段（使用平滑插值）
+      setRawProgress(data.progress_percentage)
 
       // 根据状态映射到UI阶段
       if (data.status === 'completed') {
         setStage('completed')
-        setProgress(100)
+        setRawProgress(100)
         onUploadComplete?.(documentId)
         return
       } else if (data.status === 'failed') {
@@ -189,7 +230,7 @@ export function SmartUpload({ onUploadComplete, onError }: SmartUploadProps) {
   const handleReset = () => {
     setFile(null)
     setStage('idle')
-    setProgress(0)
+    setRawProgress(0)
     setStatus(null)
     setError('')
     if (pollIntervalRef.current) {
@@ -304,17 +345,15 @@ export function SmartUpload({ onUploadComplete, onError }: SmartUploadProps) {
             <div className="mb-6">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-gray-700">处理进度</span>
-                <span className="text-sm font-semibold text-black">{progress}%</span>
+                <span className="text-sm font-semibold text-black">{Math.round(displayProgress)}%</span>
               </div>
 
               {/* 进度条背景 */}
               <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
-                {/* 渐变进度条 */}
+                {/* 渐变进度条 - 使用平滑进度 */}
                 <motion.div
                   className="h-full bg-gradient-to-r from-blue-500 to-green-500 rounded-full"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${progress}%` }}
-                  transition={{ duration: 0.5, ease: 'easeOut' }}
+                  style={{ width: `${displayProgress}%` }}
                 />
               </div>
             </div>
@@ -390,6 +429,25 @@ export function SmartUpload({ onUploadComplete, onError }: SmartUploadProps) {
                   <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                   <div>
                     <p className="font-medium text-amber-900">{status.ocr_notice}</p>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {/* 置信度警告 - 当 OCR 置信度低于 0.8 时显示 */}
+            {stage === 'completed' && status?.is_scan && status?.ocr_confidence < 0.8 && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-6 p-4 bg-red-50 rounded-xl border border-red-200"
+              >
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-red-900">⚠️ 识别精度较低</p>
+                    <p className="text-sm text-red-700 mt-1">
+                      AI 识别置信度为 {(status.ocr_confidence * 100).toFixed(0)}%，建议您结合原文阅读以确保准确性。
+                    </p>
                   </div>
                 </div>
               </motion.div>

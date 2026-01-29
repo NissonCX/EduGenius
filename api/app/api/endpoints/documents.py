@@ -202,43 +202,110 @@ async def upload_document(
 
         print(f"📖 开始解析 {file_type} 文档...")
 
-        # 🔍 PDF 预检查：判断是否有文本层
+        # 🔍 智能混合处理：使用 HybridDocumentProcessor
         if file_type == "pdf":
             try:
+                from app.services.hybrid_document_processor import HybridDocumentProcessor
                 from app.utils.pdf_validator import validate_pdf_before_upload
-                validation = validate_pdf_before_upload(tmp_file_path)
 
                 print(f"\n{'='*60}")
+                print(f"🔬 智能混合处理模式")
+                print(f"{'='*60}\n")
+
+                # 预检测
+                validation = validate_pdf_before_upload(tmp_file_path)
+
                 print(f"📋 PDF 预检查结果:")
                 print(f"   总页数: {validation['total_pages']}")
                 print(f"   文本页: {validation['text_pages']}")
-                print(f"   图片页: {validation['image_pages']}")
                 print(f"   文本占比: {validation['text_ratio']:.1%}")
                 print(f"   是否扫描版: {'⚠️  是' if validation['is_scan'] else '✅ 否'}")
-
-                if validation['sample_text']:
-                    print(f"   示例文本: {validation['sample_text'][:80]}...")
-
                 print(f"{'='*60}\n")
 
-                # 如果是扫描版 PDF，给出详细提示
+                # 如果是扫描版，给出提示但继续处理（不再拒绝）
                 if validation['is_scan']:
-                    raise HTTPException(
-                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                        detail={
-                            "error": "扫描版PDF不支持",
-                            "message": "这个PDF文件是扫描版（纯图片），无法直接提取文本。",
-                            "validation": validation,
-                            "suggestions": [
-                                "使用 PDF 转文字工具处理（如 Adobe Acrobat、ABBYY FineReader）",
-                                "寻找该教材的电子版（出版社官网或学术数据库）",
-                                "将扫描版 PDF 转换为带文本层的 PDF"
-                            ]
-                        }
-                    )
-                elif validation['text_ratio'] < 0.3:
-                    # 部分页面是扫描版，给出警告但继续处理
-                    print(f"⚠️  警告: 这个 PDF 有 {validation['image_pages']} 页是扫描版，可能会影响识别效果")
+                    print(f"💡 检测到扫描版PDF，将使用 PaddleOCR 进行文字识别")
+                    print(f"   预计处理时间: {validation['total_pages'] * 2}-{validation['total_pages'] * 5} 秒\n")
+
+                # 使用混合处理器处理文档
+                processor = HybridDocumentProcessor()
+
+                # 添加到后台任务或直接处理
+                # TODO: 这里应该使用 BackgroundTasks 或 Celery
+                # 为了演示，我们先同步处理，但更新状态为处理中
+
+                # 更新状态为处理中
+                await db.execute(
+                    text("UPDATE documents SET processing_status = :status WHERE id = :id"),
+                    {"status": "pending", "id": new_document.id}
+                )
+                await db.commit()
+
+                # 检查 OCR 并发限制
+                if validation['is_scan']:
+                    from app.core.ocr_semaphore import ocr_semaphore
+
+                    task_id = f"doc_{new_document.id}"
+                    acquired = await ocr_semaphore.acquire(task_id)
+
+                    if not acquired:
+                        # 槽位已满，排队处理
+                        await db.execute(
+                            text("UPDATE documents SET processing_status = :status WHERE id = :id"),
+                            {"status": "queued", "id": new_document.id}
+                        )
+                        await db.commit()
+
+                        return DocumentUploadResponse(
+                            message="⏳ 服务器繁忙，您的文档已加入队列，请稍后刷新页面查看进度",
+                            is_duplicate=False,
+                            document_id=new_document.id,
+                            md5_hash=md5_hash,
+                            processing_status="queued"
+                        )
+
+                    logger.info(f"🔐 OCR 任务 {task_id} 获得处理权限")
+
+                # 异步处理（使用 asyncio.create_task）
+                # 注意：这只是演示，生产环境应该使用 Celery
+                async def process_document_async():
+                    try:
+                        result = await processor.process_document(
+                            file_path=tmp_file_path,
+                            document_id=new_document.id,
+                            user_id=current_user.id,
+                            title=title or file.filename,
+                            db=db
+                        )
+
+                        print(f"\n✅ 文档 {new_document.id} 处理完成:")
+                        print(f"   路径: {result.get('path')}")
+                        print(f"   耗时: {result.get('processing_time', 0):.1f}秒")
+                        print(f"   OCR置信度: {result.get('ocr_confidence', 0):.1%}\n")
+
+                    except Exception as e:
+                        print(f"❌ 文档 {new_document.id} 处理失败: {e}")
+                        import traceback
+                        traceback.print_exc()
+
+                        # 更新状态为失败
+                        await db.execute(
+                            text("UPDATE documents SET processing_status = :status WHERE id = :id"),
+                            {"status": "failed", "id": new_document.id}
+                        )
+                        await db.commit()
+
+                # 启动异步处理
+                asyncio.create_task(process_document_async())
+
+                # 立即返回，让前端可以轮询进度
+                return DocumentUploadResponse(
+                    message=f"✅ 文档已上传，正在{'OCR识别' if validation['is_scan'] else '处理'}中...",
+                    is_duplicate=False,
+                    document_id=new_document.id,
+                    md5_hash=md5_hash,
+                    processing_status="pending" if validation['is_scan'] else "processing"
+                )
 
             except HTTPException:
                 raise  # 重新抛出 HTTPException
