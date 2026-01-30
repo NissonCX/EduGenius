@@ -32,3 +32,18 @@ langgraph-checkpoint==2.0.11
 # AI/ML
 openai==1.59.7
 tiktoken==0.8.0
+
+# OCR
+paddleocr==2.7.0
+paddlepaddle==2.6.2
+numpy<2.0  # Required for imgaug compatibility
+scikit-image
+imgaug
+lmdb
+attrdict
+openpyxl
+pdf2docx
+premailer
+visualdl
+fire
+cython

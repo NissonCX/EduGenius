@@ -60,7 +60,7 @@ function useSmoothProgress(targetProgress: number, duration: number = 500) {
 export default function UploadPage() {
   const router = useRouter()
   const { isAuthenticated } = useAuth()
-  const { toast } = useToast()
+  const { toast, toasts, dismiss } = useToast()
 
   // 处理上传完成
   const handleUploadComplete = (documentId: number) => {
@@ -69,12 +69,12 @@ export default function UploadPage() {
       // 显示成功通知
       toast({
         title: "✅ 文档上传成功",
-        description: "正在跳转到文档详情...",
+        description: "正在前往文档列表...",
         duration: 2000,
       })
 
-      // 跳转到文档详情
-      router.push(`/documents/${documentId}`)
+      // 跳转到文档列表（这样用户能立即看到新文档）
+      router.push('/documents')
     }, 1500)
   }
 
@@ -228,7 +228,7 @@ export default function UploadPage() {
                     )}
                   </div>
                   <button
-                    onClick={() => toast.dismiss(t.id)}
+                    onClick={() => dismiss(t.id)}
                     className="ml-2 opacity-60 hover:opacity-100"
                   >
                     <X className="w-4 h-4" />

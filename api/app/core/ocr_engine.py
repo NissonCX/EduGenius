@@ -13,6 +13,9 @@ from typing import List, Dict, Any, Optional, Callable
 from pathlib import Path
 import tempfile
 import shutil
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class OCREngine:
@@ -28,29 +31,30 @@ class OCREngine:
             return
 
         try:
-            from paddleocr import PaddleOCR
-            print("🔧 正在初始化 PaddleOCR 引擎...")
+            # 设置环境变量禁用模型检查和某些依赖
+            os.environ['PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK'] = 'True'
+            os.environ['PADDLEOCR_DISABLE_MODEL_SOURCE_CHECK'] = 'True'
 
-            # 使用轻量级模型（更快、内存占用更小）
+            from paddleocr import PaddleOCR
+            logger.info("🔧 正在初始化 PaddleOCR 引擎...")
+
+            # 使用最简单的配置，避免依赖问题
             self._engine = PaddleOCR(
                 use_angle_cls=True,  # 启用文字方向分类
                 lang='ch',           # 中文
                 use_gpu=False,       # 不使用 GPU（兼容性更好）
                 show_log=False,      # 关闭详细日志
-                # 使用轻量级模型
-                det_model_dir=None,  # 使用默认轻量检测模型
-                rec_model_dir=None,  # 使用默认轻量识别模型
-                cls_model_dir=None   # 使用默认方向分类模型
             )
 
             self._is_initialized = True
-            print("✅ PaddleOCR 引擎初始化完成")
+            logger.info("✅ PaddleOCR 引擎初始化完成")
 
         except ImportError:
             raise ImportError(
                 "PaddleOCR 未安装。请运行: pip install paddleocr"
             )
         except Exception as e:
+            logger.error(f"PaddleOCR 初始化失败: {e}", exc_info=True)
             raise RuntimeError(f"PaddleOCR 初始化失败: {e}")
 
     def process_pdf_page(

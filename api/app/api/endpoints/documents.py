@@ -8,7 +8,7 @@ from typing import Optional
 import tempfile
 import os
 
-from app.db.database import get_db
+from app.db.database import get_db, async_session_maker
 from app.crud.document import (
     calculate_md5_hash,
     get_document_by_md5,
@@ -79,9 +79,11 @@ async def upload_document(
 
     # 保存到临时文件
     tmp_file_path = None
+    permanent_file_path = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as tmp_file:
             tmp_file.write(content)
+            tmp_file.flush()  # 🔧 确保内容写入磁盘
             tmp_file_path = tmp_file.name
 
         print(f"📄 开始处理文档: {file.filename} ({len(content)} bytes)")
@@ -215,6 +217,13 @@ async def upload_document(
 
         new_document = await create_document(db, document_data, current_user.id)
 
+        # 🔧 创建永久文件目录并移动文件
+        os.makedirs("uploads", exist_ok=True)
+        permanent_file_path = f"uploads/{current_user.id}_{new_document.id}_{file.filename}"
+        import shutil
+        shutil.move(tmp_file_path, permanent_file_path)
+        print(f"💾 文件已保存到: {permanent_file_path}")
+
         print(f"📖 开始解析 {file_type} 文档...")
 
         # 🔍 智能混合处理：使用 HybridDocumentProcessor
@@ -230,7 +239,7 @@ async def upload_document(
                 print(f"{'='*60}\n")
 
                 # 预检测
-                validation = validate_pdf_before_upload(tmp_file_path)
+                validation = validate_pdf_before_upload(permanent_file_path)
 
                 print(f"📋 PDF 预检查结果:")
                 print(f"   总页数: {validation['total_pages']}")
@@ -281,31 +290,33 @@ async def upload_document(
 
                 # 异步处理（使用 asyncio.create_task）
                 async def process_document_async():
-                    try:
-                        result = await processor.process_document(
-                            file_path=tmp_file_path,
-                            document_id=new_document.id,
-                            user_id=current_user.id,
-                            title=title or file.filename,
-                            db=db
-                        )
+                    # 在异步任务中创建新的数据库 session
+                    async with async_session_maker() as async_db:
+                        try:
+                            result = await processor.process_document(
+                                file_path=permanent_file_path,
+                                document_id=new_document.id,
+                                user_id=current_user.id,
+                                title=title or file.filename,
+                                db=async_db
+                            )
 
-                        logger.info(
-                            f"✅ 文档 {new_document.id} 处理完成: "
-                            f"路径={result.get('path')}, "
-                            f"耗时={result.get('processing_time', 0):.1f}秒, "
-                            f"OCR置信度={result.get('ocr_confidence', 0):.1%}"
-                        )
+                            logger.info(
+                                f"✅ 文档 {new_document.id} 处理完成: "
+                                f"路径={result.get('path')}, "
+                                f"耗时={result.get('processing_time', 0):.1f}秒, "
+                                f"OCR置信度={result.get('ocr_confidence', 0):.1%}"
+                            )
 
-                    except Exception as e:
-                        logger.error(f"❌ 文档 {new_document.id} 处理失败: {e}", exc_info=True)
+                        except Exception as e:
+                            logger.error(f"❌ 文档 {new_document.id} 处理失败: {e}", exc_info=True)
 
-                        # 更新状态为失败
-                        await db.execute(
-                            text("UPDATE documents SET processing_status = :status WHERE id = :id"),
-                            {"status": "failed", "id": new_document.id}
-                        )
-                        await db.commit()
+                            # 更新状态为失败
+                            await async_db.execute(
+                                text("UPDATE documents SET processing_status = :status WHERE id = :id"),
+                                {"status": "failed", "id": new_document.id}
+                            )
+                            await async_db.commit()
 
                 # 启动异步处理
                 asyncio.create_task(process_document_async())
@@ -341,7 +352,7 @@ async def upload_document(
         try:
             result = await asyncio.wait_for(
                 process_uploaded_document(
-                    file_path=tmp_file_path,
+                    file_path=permanent_file_path,
                     title=title or file.filename,
                     user_email=current_user.email
                 ),
@@ -361,7 +372,7 @@ async def upload_document(
                 from app.core.textbook_parser import TextbookParser
                 parser = TextbookParser()
 
-                parse_result = await parser.parse_textbook(tmp_file_path, db)
+                parse_result = await parser.parse_textbook(permanent_file_path, db)
                 toc_text = parse_result['toc_text']
 
                 source = parse_result['source']  # 'bookmark' or 'scan'
@@ -488,7 +499,7 @@ async def upload_document(
         )
 
     finally:
-        # 清理临时文件
+        # 清理临时文件（只删除临时文件，不删除永久文件）
         if tmp_file_path and os.path.exists(tmp_file_path):
             try:
                 os.remove(tmp_file_path)

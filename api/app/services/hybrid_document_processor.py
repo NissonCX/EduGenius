@@ -6,6 +6,7 @@
 - OCR Path: PaddleOCR识别（无/少文本层）
 """
 import asyncio
+import time
 from typing import Dict, Any, Optional, Callable
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -150,26 +151,77 @@ class HybridDocumentProcessor:
                 user_email=""  # 这个参数暂时不用
             )
 
-            # ========== 阶段3: 向量化 ==========
+            # ========== 阶段3: 提取目录并划分章节 ==========
             if progress_callback:
-                progress_callback('vectorizing', 2, 3)
+                progress_callback('extracting_toc', 2, 4)
 
-            logger.info("🧠 阶段 3/4: 向量化并存储")
+            logger.info("📚 阶段 3/4: 提取目录并划分章节")
+
+            # 提取目录（使用TextbookParser）
+            toc_text = ""
+            try:
+                from app.core.textbook_parser import TextbookParser
+                parser = TextbookParser()
+
+                parse_result = await parser.parse_textbook(file_path, db)
+                toc_text = parse_result.get('toc_text', '')
+
+                source = parse_result.get('source', 'unknown')
+                pages = parse_result.get('pages', [])
+
+                logger.info(
+                    f"   目录提取完成: "
+                    f"来源={source}, "
+                    f"页码={pages}, "
+                    f"文本长度={len(toc_text)}字符"
+                )
+            except Exception as e:
+                logger.warning(f"   ⚠️  目录提取失败: {e}，使用文本前3个chunks")
+                # Fallback: 使用前3个chunks
+                toc_text = "\n\n".join([c.page_content for c in result.get('chunks', [])[:3]])
+
+            # 划分章节（使用EnhancedChapterDivider）
+            chapters_count = 0
+            try:
+                from app.services.chapter_divider_enhanced import EnhancedChapterDivider
+
+                divider = EnhancedChapterDivider()
+
+                if toc_text:
+                    logger.info(f"   开始划分章节，目录文本长度: {len(toc_text)} 字符")
+
+                    chapters = await divider.divide_document_into_chapters(
+                        document_id=document_id,
+                        user_id=user_id,
+                        document_text=toc_text,
+                        db=db
+                    )
+
+                    chapters_count = len(chapters)
+                    logger.info(f"   ✅ 成功划分 {chapters_count} 个章节")
+                else:
+                    logger.warning("   ⚠️  没有目录文本，跳过章节划分")
+
+            except Exception as e:
+                logger.error(f"   ❌ 章节划分失败: {e}", exc_info=True)
+
+            # ========== 阶段4: 完成 ==========
+            if progress_callback:
+                progress_callback('completed', 4, 4)
+
+            logger.info("🧠 阶段 4/4: 向量化并存储")
 
             # 向量化已经在 process_uploaded_document 中完成
             chunks = result.get('chunks', [])
 
-            # ========== 阶段4: 完成 ==========
-            if progress_callback:
-                progress_callback('completed', 3, 3)
-
             processing_time = time.time() - start_time
 
-            # 更新状态
+            # 更新状态（包括章节数）
             await self._update_document_status(
                 db, document_id,
                 processing_status='completed',
-                ocr_confidence=1.0  # 文本提取的置信度为100%
+                ocr_confidence=1.0,  # 文本提取的置信度为100%
+                total_chapters=chapters_count  # 更新章节数
             )
 
             logger.info(
@@ -237,7 +289,7 @@ class HybridDocumentProcessor:
 
             # 执行 OCR
             ocr_result = self.ocr_engine.process_pdf(
-                file_path=file_path,
+                pdf_path=file_path,
                 progress_callback=ocr_progress
             )
 
@@ -274,6 +326,7 @@ class HybridDocumentProcessor:
             logger.info("🧠 阶段 4/4: 向量化并提取章节")
 
             # 使用OCR提取的文本进行章节划分
+            chapters_count = 0
             try:
                 from app.services.chapter_divider_enhanced import EnhancedChapterDivider
 
@@ -289,7 +342,8 @@ class HybridDocumentProcessor:
                     db=db
                 )
 
-                logger.info(f"✅ 成功提取 {len(chapters)} 个章节")
+                chapters_count = len(chapters)
+                logger.info(f"✅ 成功提取 {chapters_count} 个章节")
 
             except Exception as e:
                 logger.warning(f"⚠️  章节提取失败: {e}", exc_info=True)
@@ -304,7 +358,8 @@ class HybridDocumentProcessor:
             await self._update_document_status(
                 db, document_id,
                 processing_status='completed',
-                ocr_confidence=ocr_result['avg_confidence']
+                ocr_confidence=ocr_result['avg_confidence'],
+                total_chapters=chapters_count  # 更新章节数
             )
 
             logger.info(
@@ -339,7 +394,8 @@ class HybridDocumentProcessor:
         has_text_layer: Optional[bool] = None,
         ocr_confidence: Optional[float] = None,
         current_page: Optional[int] = None,
-        total_pages: Optional[int] = None
+        total_pages: Optional[int] = None,
+        total_chapters: Optional[int] = None
     ):
         """更新文档处理状态"""
         updates = []
@@ -364,6 +420,10 @@ class HybridDocumentProcessor:
         if total_pages is not None:
             updates.append('total_pages = :total_pages')
             params['total_pages'] = total_pages
+
+        if total_chapters is not None:
+            updates.append('total_chapters = :total_chapters')
+            params['total_chapters'] = total_chapters
 
         if updates:
             query = text(f"""

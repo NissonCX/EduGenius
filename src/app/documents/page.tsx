@@ -82,6 +82,9 @@ export default function DocumentsPage() {
     let intervalId: NodeJS.Timeout | null = null
 
     const startPolling = async () => {
+      // 页面可见时立即加载一次
+      await loadDocuments()
+
       const hasProcessing = await loadDocuments()
 
       // 如果有正在处理的文档，启动轮询

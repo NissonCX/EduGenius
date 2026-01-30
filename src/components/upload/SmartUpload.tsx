@@ -14,6 +14,7 @@ import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Upload, FileText, CheckCircle2, Loader2, AlertCircle, Eye, Sparkles } from 'lucide-react'
 import { getApiUrl } from '@/lib/config'
+import { useAuth } from '@/contexts/AuthContext'
 
 // 平滑进度插值 Hook
 function useSmoothProgress(targetProgress: number, duration: number = 600) {
@@ -85,11 +86,14 @@ interface SmartUploadProps {
 }
 
 export function SmartUpload({ onUploadComplete, onError }: SmartUploadProps) {
+  const { getAuthHeaders } = useAuth()
   const [file, setFile] = useState<File | null>(null)
   const [stage, setStage] = useState<ProcessingStage>('idle')
   const [rawProgress, setRawProgress] = useState(0) // 原始进度
   const [status, setStatus] = useState<ProcessingStatus | null>(null)
   const [error, setError] = useState<string>('')
+  const [countdown, setCountdown] = useState(3) // 倒计时秒数
+  const countdownRef = useRef<NodeJS.Timeout | null>(null)
 
   // 使用平滑进度
   const displayProgress = useSmoothProgress(rawProgress)
@@ -98,11 +102,14 @@ export function SmartUpload({ onUploadComplete, onError }: SmartUploadProps) {
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const documentIdRef = useRef<number | null>(null)
 
-  // 清理轮询
+  // 清理轮询和倒计时
   useEffect(() => {
     return () => {
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current)
+      }
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current)
       }
     }
   }, [])
@@ -150,8 +157,16 @@ export function SmartUpload({ onUploadComplete, onError }: SmartUploadProps) {
         }
       }, 200)
 
+      // 构建headers（不包含Content-Type，让浏览器自动设置）
+      const authHeaders = getAuthHeaders(false)  // false 表示不包含 Content-Type
+      const headers: Record<string, string> = {}
+      if (authHeaders && typeof authHeaders === 'object' && 'Authorization' in authHeaders) {
+        headers['Authorization'] = (authHeaders as any).Authorization
+      }
+
       const response = await fetch(getApiUrl('/api/documents/upload'), {
         method: 'POST',
+        headers: headers as HeadersInit,
         body: formData,
       })
 
@@ -182,13 +197,24 @@ export function SmartUpload({ onUploadComplete, onError }: SmartUploadProps) {
   // 轮询处理进度
   const pollProgress = async (documentId: number) => {
     try {
-      const response = await fetch(getApiUrl(`/api/documents/${documentId}/status`))
+
+      const headers = getAuthHeaders()
+
+      const response = await fetch(
+        getApiUrl(`/api/documents/${documentId}/status`),
+        {
+          headers: headers as HeadersInit  // 添加认证token
+        }
+      )
+
 
       if (!response.ok) {
-        throw new Error('获取进度失败')
+        console.error('❌ 状态API返回错误:', response.status, response.statusText)
+        throw new Error(`获取进度失败: ${response.status}`)
       }
 
       const data: ProcessingStatus = await response.json()
+
       setStatus(data)
 
       // 更新进度和阶段（使用平滑插值）
@@ -198,7 +224,23 @@ export function SmartUpload({ onUploadComplete, onError }: SmartUploadProps) {
       if (data.status === 'completed') {
         setStage('completed')
         setRawProgress(100)
-        onUploadComplete?.(documentId)
+        setStatus(data)
+
+        // 启动倒计时
+        setCountdown(3)
+        countdownRef.current = setInterval(() => {
+          setCountdown((prev) => {
+            if (prev <= 1) {
+              if (countdownRef.current) {
+                clearInterval(countdownRef.current)
+              }
+              onUploadComplete?.(documentId)
+              return 0
+            }
+            return prev - 1
+          })
+        }, 1000)
+
         return
       } else if (data.status === 'failed') {
         setStage('failed')
@@ -212,17 +254,18 @@ export function SmartUpload({ onUploadComplete, onError }: SmartUploadProps) {
         setStage('detecting')
       }
 
-      // 继续轮询（每2秒）
+      // 继续轮询（每1秒，更快响应）
       pollIntervalRef.current = setTimeout(() => {
         pollProgress(documentId)
-      }, 2000)
+      }, 1000)
 
     } catch (err) {
-      console.error('轮询进度失败:', err)
-      // 继续轮询
+      console.error('❌ 轮询进度失败:', err)
+      onError?.(err instanceof Error ? err.message : '轮询进度失败')
+      // 继续轮询（1秒间隔）
       pollIntervalRef.current = setTimeout(() => {
         pollProgress(documentId)
-      }, 2000)
+      }, 1000)
     }
   }
 
@@ -409,11 +452,29 @@ export function SmartUpload({ onUploadComplete, onError }: SmartUploadProps) {
                 >
                   <CheckCircle2 className="w-6 h-6 text-green-600" />
                   <div className="flex-1">
-                    <p className="font-semibold text-green-900">处理完成！</p>
-                    {status?.warning && (
-                      <p className="text-sm text-green-700 mt-1">{status.warning}</p>
-                    )}
+                    <p className="font-semibold text-green-900">🎉 处理完成！</p>
+                    <p className="text-sm text-green-700 mt-1">
+                      {countdown > 0
+                        ? `${countdown} 秒后前往文档列表...`
+                        : '正在跳转...'}
+                    </p>
                   </div>
+                  <button
+                    onClick={() => {
+                      // 清除倒计时
+                      if (countdownRef.current) {
+                        clearInterval(countdownRef.current)
+                        countdownRef.current = null
+                      }
+                      // 立即跳转
+                      if (documentIdRef.current) {
+                        onUploadComplete?.(documentIdRef.current)
+                      }
+                    }}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm"
+                  >
+                    立即查看
+                  </button>
                 </motion.div>
               )}
             </div>
