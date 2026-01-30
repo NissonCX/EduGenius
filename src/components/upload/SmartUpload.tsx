@@ -13,7 +13,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Upload, FileText, CheckCircle2, Loader2, AlertCircle, Eye, Sparkles } from 'lucide-react'
-import { getApiUrl } from '@/lib/config'
+import { getApiUrl, fetchWithTimeout } from '@/lib/config'
 import { useAuth } from '@/contexts/AuthContext'
 
 // 平滑进度插值 Hook
@@ -164,11 +164,16 @@ export function SmartUpload({ onUploadComplete, onError }: SmartUploadProps) {
         headers['Authorization'] = (authHeaders as any).Authorization
       }
 
-      const response = await fetch(getApiUrl('/api/documents/upload'), {
-        method: 'POST',
-        headers: headers as HeadersInit,
-        body: formData,
-      })
+      // 🔧 使用带超时的fetch，设置30秒超时
+      const response = await fetchWithTimeout(
+        getApiUrl('/api/documents/upload'),
+        {
+          method: 'POST',
+          headers: headers as HeadersInit,
+          body: formData,
+        },
+        30000  // 30秒超时
+      )
 
       clearInterval(uploadInterval)
 
@@ -195,18 +200,29 @@ export function SmartUpload({ onUploadComplete, onError }: SmartUploadProps) {
   }
 
   // 轮询处理进度
-  const pollProgress = async (documentId: number) => {
-    try {
+  const pollProgress = async (documentId: number, attemptCount: number = 0) => {
+    // 🔧 安全保护：最多轮询 10 分钟（600 次）
+    const MAX_ATTEMPTS = 600
 
+    if (attemptCount >= MAX_ATTEMPTS) {
+      setError('处理超时，请刷新页面查看状态')
+      setStage('failed')
+      onError?.('处理超时')
+      return
+    }
+
+    try {
       const headers = getAuthHeaders()
 
-      const response = await fetch(
+      // 🔧 使用带超时的fetch（5秒超时）
+      const response = await fetchWithTimeout(
         getApiUrl(`/api/documents/${documentId}/status`),
         {
-          headers: headers as HeadersInit  // 添加认证token
-        }
+          method: 'GET',
+          headers: headers as HeadersInit
+        },
+        5000  // 5秒超时
       )
-
 
       if (!response.ok) {
         console.error('❌ 状态API返回错误:', response.status, response.statusText)
@@ -256,16 +272,23 @@ export function SmartUpload({ onUploadComplete, onError }: SmartUploadProps) {
 
       // 继续轮询（每1秒，更快响应）
       pollIntervalRef.current = setTimeout(() => {
-        pollProgress(documentId)
+        pollProgress(documentId, attemptCount + 1)
       }, 1000)
 
     } catch (err) {
       console.error('❌ 轮询进度失败:', err)
-      onError?.(err instanceof Error ? err.message : '轮询进度失败')
-      // 继续轮询（1秒间隔）
-      pollIntervalRef.current = setTimeout(() => {
-        pollProgress(documentId)
-      }, 1000)
+      // 如果是超时错误，继续重试
+      if (err instanceof Error && err.message.includes('超时')) {
+        pollIntervalRef.current = setTimeout(() => {
+          pollProgress(documentId, attemptCount + 1)
+        }, 1000)
+      } else {
+        onError?.(err instanceof Error ? err.message : '轮询进度失败')
+        // 非超时错误，也继续尝试
+        pollIntervalRef.current = setTimeout(() => {
+          pollProgress(documentId, attemptCount + 1)
+        }, 3000)  // 错误时延长间隔到3秒
+      }
     }
   }
 
@@ -388,17 +411,36 @@ export function SmartUpload({ onUploadComplete, onError }: SmartUploadProps) {
             <div className="mb-6">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium text-gray-700">处理进度</span>
-                <span className="text-sm font-semibold text-black">{Math.round(displayProgress)}%</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-black">{Math.round(displayProgress)}%</span>
+                  {/* AI 处理提示 */}
+                  {status?.stage?.includes('划分章节') && (
+                    <span className="text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
+                      AI 处理中
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* 进度条背景 */}
               <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
                 {/* 渐变进度条 - 使用平滑进度 */}
                 <motion.div
-                  className="h-full bg-gradient-to-r from-blue-500 to-green-500 rounded-full"
+                  className={`h-full rounded-full ${
+                    status?.stage?.includes('划分章节')
+                      ? 'bg-gradient-to-r from-blue-500 to-purple-500 animate-pulse'
+                      : 'bg-gradient-to-r from-blue-500 to-green-500'
+                  }`}
                   style={{ width: `${displayProgress}%` }}
                 />
               </div>
+
+              {/* 当前状态提示 */}
+              {status?.stage_message && (
+                <p className="text-xs text-gray-500 mt-2">
+                  {status.stage_message}
+                </p>
+              )}
             </div>
 
             {/* 阶段指示器 */}
@@ -427,10 +469,20 @@ export function SmartUpload({ onUploadComplete, onError }: SmartUploadProps) {
                   {/* OCR 路径 */}
                   <ProcessingStep
                     icon={<Eye className="w-5 h-5" />}
-                    label="OCR识别"
-                    subtext={status?.current_page > 0 ? `${status.current_page}/${status.total_pages}页` : ''}
+                    label={
+                      status?.stage?.includes('划分章节')
+                        ? 'AI 划分章节'
+                        : 'OCR 识别'
+                    }
+                    subtext={
+                      status?.current_page && status.current_page > 0 && status?.total_pages && status.total_pages > 0 && !status?.stage?.includes('划分章节')
+                        ? `${status.current_page}/${status.total_pages} 页`
+                        : status?.stage?.includes('划分章节')
+                        ? '正在分析目录结构...'
+                        : ''
+                    }
                     active={stage === 'ocr_processing'}
-                    completed={stage === 'completed' && status?.is_scan}
+                    completed={stage === 'completed' && !status?.has_text_layer}
                   />
                 </>
               )}
@@ -438,8 +490,8 @@ export function SmartUpload({ onUploadComplete, onError }: SmartUploadProps) {
               {/* 向量化阶段 */}
               <ProcessingStep
                 icon={<CheckCircle2 className="w-5 h-5" />}
-                label="向量化存储"
-                active={stage === 'vectorizing'}
+                label="完成准备"
+                active={false}
                 completed={stage === 'completed'}
               />
 

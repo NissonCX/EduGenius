@@ -269,25 +269,40 @@ class TextbookParser:
             }
 
     def _calculate_page_score(self, text: str, page_num: int) -> int:
-        """计算页面的目录可能性权重"""
+        """
+        计算页面的目录可能性权重
+
+        优先级：
+        1. 包含"目录"关键词的页面优先级最高
+        2. 前20页内的"章"关键词有效
+        3. 页码密度高
+        """
         score = 0
 
-        # 1. 检查目录关键词（高权重）
+        # 🔧 FIX: 优先检查"目录"关键词（最高优先级）
+        has_toc_keyword = False
         for keyword, weight in self.TOC_KEYWORDS.items():
             if keyword in text:
+                has_toc_keyword = True
                 score += weight
                 # 如果标题独立出现，额外加分
                 if text.strip().startswith(keyword):
                     score += 5
 
-        # 2. 检查章节关键词（中权重）
-        for keyword, weight in self.CHAPTER_KEYWORDS.items():
-            # 统计关键词出现次数
-            count = text.count(keyword)
-            if count > 0:
-                # 前几页的章节更可能是目录
-                position_bonus = max(0, 5 - page_num)  # 前5页有额外加分
-                score += min(count * weight * position_bonus, 50)
+        # 🔧 FIX: 如果页面明显包含"目录"关键词，且在前20页，给予额外的目录页奖励
+        if has_toc_keyword and page_num < 20:
+            score += 20  # 目录页额外奖励分
+
+        # 🔧 FIX: 章节关键词只在前20页有效（避免正文干扰）
+        # 如果页面不包含"目录"关键词，才检查章节关键词
+        if not has_toc_keyword and page_num < 20:
+            for keyword, weight in self.CHAPTER_KEYWORDS.items():
+                # 统计关键词出现次数
+                count = text.count(keyword)
+                if count > 0:
+                    # 前几页的章节更可能是目录
+                    position_bonus = max(0, 10 - page_num)  # 🔧 扩大到前10页
+                    score += min(count * weight * position_bonus, 30)  # 🔧 降低上限
 
         # 3. 检查页码模式（中权重）
         page_count = 0
@@ -300,19 +315,21 @@ class TextbookParser:
             density = page_count / len(text) * 1000
             score += min(int(density), 10)
 
-        # 4. 检查章节编号模式（高权重）
+        # 4. 检查章节编号模式（中权重，降低权重）
         chapter_patterns = [
             r'第[一二三四五六七八九十百千]+章',
             r'第\d+章',
             r'Chapter\s+\d+',
             r'[一二三四五六七八九十]+、[^\n]{1,20}',
         ]
-        for pattern in chapter_patterns:
-            matches = re.findall(pattern, text)
-            if matches:
-                score += len(matches) * 3
+        # 🔧 FIX: 只在前20页检查章节编号模式
+        if page_num < 20:
+            for pattern in chapter_patterns:
+                matches = re.findall(pattern, text)
+                if matches:
+                    score += len(matches) * 2  # 🔧 从3降到2
 
-        # 5. 检查小节编号
+        # 5. 检查小节编号（低权重）
         section_patterns = [
             r'\d+\.\d+',  # 1.1, 1.2
             r'第[一二三四五六七八九十]+节',
@@ -320,7 +337,7 @@ class TextbookParser:
         for pattern in section_patterns:
             matches = re.findall(pattern, text)
             if matches:
-                score += len(matches) * 2
+                score += len(matches) * 1  # 🔧 从2降到1
 
         return score
 
@@ -334,7 +351,7 @@ class TextbookParser:
         策略：
         1. 排序后取所有高分页面（分数 >= 5）
         2. 找出权重最高的页面作为中心
-        3. 向前后扩展，包含连续的页面（只要有合理分数）
+        3. 🔧 FIX: 先按页码排序，再进行连续性扩展
         4. 不限制页数上限（最多20页），确保完整TOC被提取
         """
         if not page_scores:
@@ -354,47 +371,50 @@ class TextbookParser:
 
         print(f"   📊 找到 {len(scoring_pages)} 个高分页面（>={min_score_threshold}分）")
 
-        # 找出最高分的页面作为起始点
-        start_index = 0
-        max_score = scoring_pages[0]['score']
+        # 🔧 FIX: 关键修复！按页码排序后再进行连续性检查
+        scoring_pages_by_page_num = sorted(scoring_pages, key=lambda x: x['page'])
 
-        for i, page in enumerate(scoring_pages):
-            if page['score'] == max_score:
-                start_index = i
-                break
+        # 找出最高分的页面作为起始点
+        max_score = max(p['score'] for p in scoring_pages_by_page_num)
+        start_page = next((p for p in scoring_pages_by_page_num if p['score'] == max_score), None)
+
+        if not start_page:
+            return scoring_pages_by_page_num[:2]
+
+        start_index = scoring_pages_by_page_num.index(start_page)
 
         # 从起始点向前后扩展
-        selected_pages = [scoring_pages[start_index]]
-        selected_page_nums = {scoring_pages[start_index]['page']}
+        selected_pages = [start_page]
+        selected_page_nums = {start_page['page']}
 
         # 向前扩展
         for i in range(start_index - 1, -1, -1):
             if i < 0:
                 break
-            prev_page = scoring_pages[i]['page']
+            prev_page = scoring_pages_by_page_num[i]['page']
             # 只包含连续页码
-            if prev_page == selected_page_nums[min(selected_pages)] - 1:
-                selected_pages.insert(0, scoring_pages[i])
+            if prev_page == min(selected_page_nums) - 1:
+                selected_pages.insert(0, scoring_pages_by_page_num[i])
                 selected_page_nums.add(prev_page)
             else:
                 break
 
-            # 🔧 FIX: 移除5页限制，扩展到20页
+            # 扩展到20页
             if len(selected_pages) >= 20:
                 print(f"   ⏹️  扩展达到20页，停止")
                 break
 
         # 向后扩展
-        for i in range(start_index + 1, len(scoring_pages)):
-            next_page = scoring_pages[i]['page']
+        for i in range(start_index + 1, len(scoring_pages_by_page_num)):
+            next_page = scoring_pages_by_page_num[i]['page']
             # 只包含连续页码
             if next_page == max(selected_page_nums) + 1:
-                selected_pages.append(scoring_pages[i])
+                selected_pages.append(scoring_pages_by_page_num[i])
                 selected_page_nums.add(next_page)
             else:
                 break
 
-            # 🔧 FIX: 移除5页限制，扩展到20页
+            # 扩展到20页
             if len(selected_pages) >= 20:
                 print(f"   ⏹️  扩展达到20页，停止")
                 break

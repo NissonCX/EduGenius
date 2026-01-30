@@ -12,8 +12,14 @@ import { cn } from '@/lib/utils'
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useAuth } from '@/contexts/AuthContext'
-import { getApiUrl } from '@/lib/config'
+import { getApiUrl, getAuthHeadersSimple } from '@/lib/config'
+
+interface User {
+  id: number
+  username: string
+  email: string
+  teachingStyle: number
+}
 
 interface SidebarProps {
   className?: string
@@ -23,14 +29,51 @@ export function Sidebar({ className }: SidebarProps) {
   const [isDragOver, setIsDragOver] = useState(false)
   const pathname = usePathname()
   const [overallProgress, setOverallProgress] = useState(0)
+  const [user, setUser] = useState<User | null>(null)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [mounted, setMounted] = useState(false)
 
-  // 使用 useAuth hook
-  const { user, isAuthenticated, logout } = useAuth()
+  // 客户端挂载后从 localStorage 读取用户信息
+  useEffect(() => {
+    setMounted(true)
+
+    const loadUser = () => {
+      const userStr = localStorage.getItem('user')
+      const token = localStorage.getItem('token')
+      if (userStr && token) {
+        try {
+          setUser(JSON.parse(userStr))
+          setIsAuthenticated(true)
+        } catch {
+          setUser(null)
+          setIsAuthenticated(false)
+        }
+      } else {
+        setUser(null)
+        setIsAuthenticated(false)
+      }
+    }
+
+    loadUser()
+
+    // 监听 storage 事件（多标签页同步和登录/登出）
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'user' || e.key === 'token' || e.key === null) {
+        loadUser()
+      }
+    }
+
+    window.addEventListener('storage', handleStorageChange)
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+    }
+  }, [])
 
   // 加载用户总体进度
   useEffect(() => {
     const loadProgress = async () => {
-      if (!isAuthenticated || !user.id) {
+      if (!isAuthenticated || !user?.id) {
         setOverallProgress(0)
         return
       }
@@ -39,10 +82,7 @@ export function Sidebar({ className }: SidebarProps) {
         const response = await fetch(
           getApiUrl(`/api/users/${user.id}/progress`),
           {
-            headers: {
-              'Content-Type': 'application/json',
-              ...(user.token && { 'Authorization': `Bearer ${user.token}` })
-            }
+            headers: getAuthHeadersSimple()
           }
         )
 
@@ -61,7 +101,7 @@ export function Sidebar({ className }: SidebarProps) {
     }
 
     loadProgress()
-  }, [user.id, isAuthenticated])
+  }, [user?.id, isAuthenticated])
 
   const navItems = [
     { href: '/', icon: Home, label: '首页' },
@@ -71,7 +111,8 @@ export function Sidebar({ className }: SidebarProps) {
   ]
 
   const handleLogout = () => {
-    logout()
+    localStorage.removeItem('token')
+    localStorage.removeItem('user')
     window.location.href = '/'
   }
 
@@ -117,7 +158,7 @@ export function Sidebar({ className }: SidebarProps) {
 
           {/* 用户状态 */}
           <div className="mt-4">
-            {isAuthenticated && user ? (
+            {mounted && isAuthenticated && user ? (
               <div className="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center text-xs font-medium">
@@ -134,7 +175,7 @@ export function Sidebar({ className }: SidebarProps) {
                   退出
                 </button>
               </div>
-            ) : (
+            ) : mounted ? (
               <div className="flex gap-2">
                 <Link
                   href="/login"
@@ -148,6 +189,12 @@ export function Sidebar({ className }: SidebarProps) {
                 >
                   注册
                 </Link>
+              </div>
+            ) : (
+              // 服务器端渲染占位符（避免 hydration 不匹配）
+              <div className="flex gap-2 opacity-0">
+                <div className="flex-1 px-3 py-2 bg-gray-100 text-center text-sm rounded-lg" />
+                <div className="flex-1 px-3 py-2 border border-gray-200 text-center text-sm rounded-lg" />
               </div>
             )}
           </div>
@@ -243,12 +290,11 @@ export function Sidebar({ className }: SidebarProps) {
             <BookOpen className="w-8 h-8 text-gray-400 mx-auto mb-3" />
             <p className="text-sm font-medium text-gray-900 mb-2">开始学习</p>
             <p className="text-xs text-gray-500 leading-relaxed">
-              {isAuthenticated 
+              {mounted && isAuthenticated
                 ? '前往「学习对话」选择教材和章节开始学习'
-                : '登录后即可开始您的学习之旅'
-              }
+                : mounted ? '登录后即可开始您的学习之旅' : '加载中...'}
             </p>
-            {isAuthenticated && (
+            {mounted && isAuthenticated && (
               <Link
                 href="/study"
                 className="mt-4 inline-block px-4 py-2 bg-black text-white text-sm rounded-lg hover:bg-gray-800 transition-colors"

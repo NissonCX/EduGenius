@@ -23,6 +23,7 @@ from app.core.security import (
     verify_password,
     get_password_hash,
     create_token_for_user,
+    get_current_user_optional,
     Token
 )
 
@@ -922,4 +923,61 @@ async def save_conversation(
         "status": "success",
         "message": "对话已保存",
         "id": conversation.id
+    }
+
+
+@router.put("/{user_id}/teaching-style")
+async def update_teaching_style(
+    user_id: int,
+    style_data: dict,
+    current_user: User = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    更新用户的教学风格偏好
+
+    Args:
+        user_id: 用户ID
+        style_data: {"teaching_style": int} (1-5)
+    """
+    # 验证权限：只能更新自己的风格
+    if current_user and current_user.id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="无权限修改其他用户的设置"
+        )
+
+    teaching_style = style_data.get("teaching_style")
+
+    # 验证风格值
+    if not teaching_style or not isinstance(teaching_style, int) or teaching_style < 1 or teaching_style > 5:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="教学风格必须是 1-5 之间的整数"
+        )
+
+    # 获取用户
+    from sqlalchemy import select
+
+    user_result = await db.execute(
+        select(User).where(User.id == user_id)
+    )
+    user = user_result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在"
+        )
+
+    # 更新教学风格
+    user.cognitive_level = teaching_style
+    await db.commit()
+
+    print(f"✅ 用户 {user_id} 的教学风格已更新为 L{teaching_style}")
+
+    return {
+        "status": "success",
+        "message": "教学风格已更新",
+        "teaching_style": teaching_style
     }

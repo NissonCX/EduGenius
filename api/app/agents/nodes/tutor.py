@@ -192,10 +192,23 @@ class TutorAgent:
 
         system_prompt = get_tutor_prompt(student_level)
 
+        # 构建上下文信息，包含小节信息
+        context_info = f"当前章节背景（用于回答）：\n{chapter_content[:2000]}"
+
+        # 如果有小节信息，添加到上下文中
+        subsection_id = state.get("subsection_id")
+        subsection_title = state.get("subsection_title")
+        if subsection_id and subsection_title:
+            context_info = f"""当前学习内容：
+- 章节：{state.get('chapter_title', '')}
+- 小节：{subsection_id} {subsection_title}
+
+上下文背景：
+{chapter_content[:2000]}"""
+
         user_prompt = f"""学生提问：{question}
 
-当前章节背景（用于回答）：
-{chapter_content[:2000]}
+{context_info}
 
 学生薄弱点：
 {chr(10).join(f'- {t}' for t in wrong_topics) if wrong_topics else '暂无明显薄弱点'}

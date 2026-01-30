@@ -180,20 +180,21 @@ class HybridDocumentProcessor:
                 # Fallback: 使用前3个chunks
                 toc_text = "\n\n".join([c.page_content for c in result.get('chunks', [])[:3]])
 
-            # 划分章节（使用EnhancedChapterDivider）
+            # 划分章节（使用改进版提取器）
             chapters_count = 0
             try:
-                from app.services.chapter_divider_enhanced import EnhancedChapterDivider
+                from app.services.improved_chapter_extractor import ImprovedChapterExtractor
 
-                divider = EnhancedChapterDivider()
+                extractor = ImprovedChapterExtractor()
 
                 if toc_text:
-                    logger.info(f"   开始划分章节，目录文本长度: {len(toc_text)} 字符")
+                    logger.info(f"   开始智能提取章节，目录文本长度: {len(toc_text)} 字符")
 
-                    chapters = await divider.divide_document_into_chapters(
+                    # 🔧 FIX: 使用直接文本提取方法，不需要页面检测
+                    chapters = await extractor.extract_chapters_from_text(
+                        toc_text=toc_text,
                         document_id=document_id,
                         user_id=user_id,
-                        document_text=toc_text,
                         db=db
                     )
 
@@ -258,95 +259,212 @@ class HybridDocumentProcessor:
         progress_callback: Optional[Callable],
         start_time: float
     ) -> Dict[str, Any]:
-        """OCR路径：使用PaddleOCR识别"""
+        """
+        OCR路径：智能处理扫描版 PDF
 
-        logger.info(f"⏱️  选择 OCR 路径（OCR Path）：只有 {validation['text_ratio']:.1%} 的页面有文本层")
+        三步走策略：
+        1. 先尝试提取 PDF 书签（不需要 OCR！）
+        2. 如果没有书签，启发式 OCR 前 60 页并智能筛选目录页
+        3. 用 LLM 划分章节
+
+        这样最多只需要 OCR 60 页，而不是整本书 424 页
+        """
+
+        logger.info(f"⏱️  选择 OCR 路径（OCR Path）：扫描版 PDF，智能提取目录")
 
         try:
-            # 更新状态为 OCR 处理中
+            # 更新状态为处理中
             await self._update_document_status(
                 db, document_id,
-                processing_status='ocr_processing'
+                processing_status='ocr_processing',
+                total_pages=validation['total_pages']
             )
 
-            # ========== 阶段2: OCR识别 ==========
-            if progress_callback:
-                progress_callback('ocr', 0, validation['total_pages'])
+            # ========== 第一步：尝试提取 PDF 书签（不需要 OCR！）==========
+            logger.info("📚 第一步：尝试提取 PDF 书签...")
 
-            logger.info("🔬 阶段 2/4: OCR 文字识别")
+            toc_text = ""
+            toc_source = "unknown"
+            ocr_confidence = 0.0
 
-            # 定义进度回调
-            def ocr_progress(current: int, total: int, message: str):
-                logger.info(f"   {message}")
+            try:
+                import fitz
+                doc = fitz.open(file_path)
+                toc = doc.get_toc()
+
+                if toc and len(toc) > 0:
+                    logger.info(f"   ✅ 找到 {len(toc)} 个书签！不需要 OCR")
+
+                    # 构建目录文本
+                    toc_parts = []
+                    for level, title, page_num in toc:
+                        indent = "  " * (level - 1)
+                        toc_parts.append(f"{indent}{'•' * level} {title} (第{page_num}页)")
+
+                    toc_text = "\n".join(toc_parts)
+                    toc_source = "bookmark"
+                    ocr_confidence = 1.0  # 书签不需要 OCR，置信度为 100%
+                    doc.close()
+                else:
+                    logger.info("   ⚠️  没有书签，需要 OCR 提取目录")
+                    doc.close()
+
+            except Exception as e:
+                logger.warning(f"   ⚠️  书签提取失败: {e}，将使用 OCR")
+
+            # ========== 第二步：如果没有书签，启发式 OCR 前 60 页 ==========
+            if not toc_text:
+                MAX_SCAN_PAGES = 60
+                pages_to_ocr = list(range(1, min(MAX_SCAN_PAGES + 1, validation['total_pages'] + 1)))
+
+                logger.info(f"🔬 第二步：启发式 OCR 识别前 {len(pages_to_ocr)} 页...")
+
                 if progress_callback:
-                    progress_callback('ocr', current, total)
+                    progress_callback('ocr', 0, len(pages_to_ocr))
 
-                # 更新数据库进度
-                asyncio.create_task(self._update_document_status(
+                # 更新总页数
+                await self._update_document_status(
                     db, document_id,
-                    current_page=current
-                ))
-
-            # 执行 OCR
-            ocr_result = self.ocr_engine.process_pdf(
-                pdf_path=file_path,
-                progress_callback=ocr_progress
-            )
-
-            if not ocr_result['success']:
-                raise Exception(f"OCR 处理失败: {ocr_result['errors']}")
-
-            # 检查置信度
-            if ocr_result['avg_confidence'] < self.OCR_CONFIDENCE_THRESHOLD:
-                raise Exception(
-                    f"OCR 识别质量过低（置信度: {ocr_result['avg_confidence']:.1%}），"
-                    f"请上传更清晰的扫描件"
+                    total_pages=len(pages_to_ocr)
                 )
 
-            # ========== 阶段3: 文本后处理 ==========
+                # 进度回调
+                def ocr_progress(current: int, total: int, message: str):
+                    logger.info(f"   {message}")
+                    if progress_callback:
+                        progress_callback('ocr', current, len(pages_to_ocr))
+
+                    # 每处理 5 页更新一次数据库
+                    if current % 5 == 0:
+                        try:
+                            loop = asyncio.get_running_loop()
+                            loop.call_soon_threadsafe(
+                                lambda: asyncio.create_task(
+                                    self._update_document_status(
+                                        db, document_id,
+                                        current_page=current
+                                    )
+                                )
+                            )
+                        except RuntimeError:
+                            pass
+
+                # 🔧 FIX: 使用 asyncio.to_thread 将同步 OCR 移到线程池
+                # 这样其他 API 请求不会被阻塞
+                import asyncio
+
+                ocr_result = await asyncio.to_thread(
+                    self.ocr_engine.process_pdf,
+                    pdf_path=file_path,
+                    pages=pages_to_ocr,
+                    progress_callback=ocr_progress
+                )
+
+                if not ocr_result['success']:
+                    raise Exception(f"OCR 处理失败: {ocr_result['errors']}")
+
+                ocr_confidence = ocr_result['avg_confidence']
+                logger.info(f"   ✅ OCR 完成，识别了 {len(ocr_result['pages'])} 页，置信度 {ocr_confidence:.1%}")
+
+                # ========== 智能筛选：找出最可能是目录的页 ==========
+                logger.info("🔍 第三步：智能筛选目录页...")
+
+                # 导入 TextbookParser 的评分逻辑
+                from app.core.textbook_parser import TextbookParser
+                parser = TextbookParser()
+
+                # 🔧 FIX: 对每一页评分，使用与Fast Path相同的逻辑
+                page_scores = []
+                for page_data in ocr_result['pages']:
+                    text = page_data['text']
+                    page_num = page_data['page_num']
+
+                    if text.strip():
+                        score = parser._calculate_page_score(text, page_num - 1)
+                        # 保存所有页面信息，包括文本
+                        page_scores.append({
+                            'page': page_num,
+                            'score': score,
+                            'text': text,
+                            'char_count': len(text)
+                        })
+
+                        # 显示前10页的分数
+                        if page_num <= 10:
+                            status = "✅" if score > 20 else "  "
+                            logger.info(f"   {status} 第 {page_num:2} 页: {score:3} 分 | {len(text):4} 字符")
+
+                if page_scores:
+                    # 🔧 FIX: 使用修复后的连续性检查逻辑
+                    # 将数据转换为 _select_best_pages 需要的格式
+                    best_pages = parser._select_best_pages(page_scores)
+
+                    logger.info(f"   ✅ 选定 {len(best_pages)} 个目录页: {[p['page'] for p in best_pages]}")
+
+                    # 合并文本
+                    toc_text = "\n\n".join([
+                        f"--- 第{p['page']}页 ---\n{p['text']}"
+                        for p in best_pages
+                    ])
+                    toc_source = "ocr_scan"
+
+                    # 显示选择结果的详细信息
+                    logger.info(f"   📊 目录文本总长度: {len(toc_text)} 字符")
+                else:
+                    # Fallback: 使用所有 OCR 文本
+                    logger.warning("   ⚠️  未找到明显目录页，使用所有 OCR 文本")
+                    toc_text = ocr_result['full_text']
+                    toc_source = "ocr_fallback"
+
+            # ========== 第三步：使用改进版章节提取器 ==========
             if progress_callback:
                 progress_callback('processing', 1, 3)
 
-            logger.info("📝 阶段 3/4: 文本后处理")
+            logger.info(f"🧠 第三步：使用改进版章节提取器（目录来源: {toc_source}）")
+            logger.info(f"   目录文本长度: {len(toc_text)} 字符")
 
-            # 使用OCR提取的文本
-            extracted_text = ocr_result['full_text']
-
-            logger.info(f"   提取文本长度: {len(extracted_text)} 字符")
-
-            # TODO: 这里可以进行文本后处理
-            # - 格式校正
-            # - 段落重组
-            # - 特殊字符修复
-
-            # ========== 阶段4: 向量化 ==========
-            if progress_callback:
-                progress_callback('vectorizing', 2, 3)
-
-            logger.info("🧠 阶段 4/4: 向量化并提取章节")
-
-            # 使用OCR提取的文本进行章节划分
             chapters_count = 0
             try:
-                from app.services.chapter_divider_enhanced import EnhancedChapterDivider
+                from app.services.improved_chapter_extractor import ImprovedChapterExtractor
 
-                divider = EnhancedChapterDivider()
+                extractor = ImprovedChapterExtractor()
 
-                logger.info("📚 开始从OCR文本中提取章节...")
+                logger.info("📚 开始智能提取章节...")
 
-                # 提取章节
-                chapters = await divider.divide_document_into_chapters(
-                    document_id=document_id,
-                    user_id=user_id,
-                    document_text=ocr_result['full_text'],
-                    db=db
-                )
+                # 🔧 FIX: OCR路径已经有选择好的目录文本，直接使用 extract_chapters_from_text
+                if toc_text and len(toc_text) > 100:
+                    logger.info(f"   使用预选的目录文本进行章节提取")
+                    chapters = await extractor.extract_chapters_from_text(
+                        toc_text=toc_text,
+                        document_id=document_id,
+                        user_id=user_id,
+                        db=db
+                    )
+                else:
+                    # Fallback: 如果没有足够的目录文本，尝试从OCR结果重新提取
+                    logger.warning(f"   ⚠️  目录文本太短（{len(toc_text)}字符），尝试从OCR结果重新提取")
+                    chapters = await extractor.extract_chapters(
+                        ocr_result=ocr_result,
+                        file_path=file_path,
+                        document_id=document_id,
+                        user_id=user_id,
+                        db=db
+                    )
 
-                chapters_count = len(chapters)
+                chapters_count = len(chapters) if chapters else 0
                 logger.info(f"✅ 成功提取 {chapters_count} 个章节")
+
+                # 打印章节列表
+                if chapters:
+                    logger.info("📚 提取的章节列表:")
+                    for ch in chapters:
+                        subs = ch.get('subsections', [])
+                        logger.info(f"   第{ch['chapter_number']}章: {ch['chapter_title']} ({len(subs)}个小节)")
 
             except Exception as e:
                 logger.warning(f"⚠️  章节提取失败: {e}", exc_info=True)
+                import traceback
+                traceback.print_exc()
 
             processing_time = time.time() - start_time
 
@@ -358,28 +476,31 @@ class HybridDocumentProcessor:
             await self._update_document_status(
                 db, document_id,
                 processing_status='completed',
-                ocr_confidence=ocr_result['avg_confidence'],
-                total_chapters=chapters_count  # 更新章节数
+                ocr_confidence=ocr_confidence,
+                total_chapters=chapters_count
             )
 
             logger.info(
                 f"✅ OCR 处理完成: "
                 f"耗时={processing_time:.1f}秒, "
-                f"平均置信度={ocr_result['avg_confidence']:.1%}, "
-                f"识别页数={ocr_result['processed_pages']}/{ocr_result['total_pages']}"
+                f"目录来源={toc_source}, "
+                f"置信度={ocr_confidence:.1%}, "
+                f"章节数={chapters_count}"
             )
 
             return {
                 'success': True,
                 'path': 'ocr',
                 'text_ratio': validation['text_ratio'],
-                'ocr_confidence': ocr_result['avg_confidence'],
+                'ocr_confidence': ocr_confidence,
                 'processing_time': processing_time,
-                'chunks': 0,  # TODO: 实际chunk数量
-                'message': f'✅ OCR识别完成，置信度 {ocr_result["avg_confidence"]:.1%}，耗时 {processing_time:.1f}秒'
+                'chunks': 0,
+                'toc_source': toc_source,
+                'message': f'✅ 处理完成（{toc_source}），{chapters_count} 个章节，耗时 {processing_time:.1f}秒'
             }
 
         except Exception as e:
+            logger.error(f"❌ OCR 处理失败: {e}", exc_info=True)
             await self._update_document_status(
                 db, document_id,
                 processing_status='failed'

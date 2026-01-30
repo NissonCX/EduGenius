@@ -29,19 +29,6 @@ interface ChatMessageProps {
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === 'user'
 
-  // 清理内容，防止 XSS 攻击
-  // 用户消息：严格限制标签
-  // AI 消息：允许更多标签（用于 Markdown 渲染）
-  const sanitizedContent = DOMPurify.sanitize(message.content, {
-    ALLOWED_TAGS: isUser
-      ? ['p', 'br', 'strong', 'em', 'u', 'code', 'pre']
-      : ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'a', 'blockquote', 'hr', 'table', 'thead', 'tbody', 'tr', 'td', 'th'],
-    ALLOWED_ATTR: isUser
-      ? []
-      : ['href', 'title', 'class', 'className'],
-    ALLOW_DATA_ATTR: false
-  })
-
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -67,14 +54,21 @@ export function ChatMessage({ message }: ChatMessageProps) {
             ? 'bg-white border border-gray-200 rounded-tr-sm'
             : 'bg-gray-50 rounded-tl-sm border border-gray-100'
         }`}>
-          {/* Markdown 渲染 */}
+          {/* 用户消息：纯文本 */}
           {isUser ? (
-            <p
-              className="text-sm text-gray-900 whitespace-pre-wrap"
-              dangerouslySetInnerHTML={{ __html: sanitizedContent }}
-            />
+            <p className="text-sm text-gray-900 whitespace-pre-wrap">
+              {message.content}
+            </p>
           ) : (
-            <div className="prose prose-sm max-w-none">
+            /* AI消息：Markdown渲染 */
+            <div className="prose prose-sm prose-gray max-w-none
+                      prose-p:text-gray-900 prose-p:leading-relaxed
+                      prose-headings:text-black prose-headings:font-semibold
+                      prose-strong:text-black prose-strong:font-semibold
+                      prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline
+                      prose-pre:bg-gray-900 prose-pre:text-gray-100
+                      prose-code:text-pink-600 prose-code:bg-gray-100 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-mono prose-code:text-sm
+                      prose-blockquote:border-l-4 prose-blockquote:border-gray-300 prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-gray-600">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm, remarkMath]}
                 rehypePlugins={[rehypeKatex]}
@@ -105,15 +99,16 @@ export function ChatMessage({ message }: ChatMessageProps) {
                     )
                   },
                   // 其他元素样式
-                  p: ({ children }) => <p className="text-gray-900 mb-2">{children}</p>,
+                  p: ({ children }) => <p className="mb-3 leading-7 text-gray-900">{children}</p>,
                   strong: ({ children }) => <strong className="font-semibold text-black">{children}</strong>,
                   em: ({ children }) => <em className="italic text-gray-700">{children}</em>,
-                  ul: ({ children }) => <ul className="list-disc list-inside mb-2">{children}</ul>,
-                  ol: ({ children }) => <ol className="list-decimal list-inside mb-2">{children}</ol>,
-                  li: ({ children }) => <li className="mb-1">{children}</li>,
-                  h1: ({ children }) => <h1 className="text-lg font-semibold mb-2 text-black">{children}</h1>,
-                  h2: ({ children }) => <h2 className="text-base font-semibold mb-2 text-black">{children}</h2>,
-                  h3: ({ children }) => <h3 className="text-sm font-semibold mb-2 text-gray-800">{children}</h3>,
+                  ul: ({ children }) => <ul className="list-disc list-inside mb-4 space-y-1 marker:text-gray-900">{children}</ul>,
+                  ol: ({ children }) => <ol className="list-decimal list-inside mb-4 space-y-1 marker:text-gray-900">{children}</ol>,
+                  li: ({ children }) => <li className="mb-1 leading-7">{children}</li>,
+                  h1: ({ children }) => <h1 className="text-xl font-bold mb-3 mt-6 text-black pb-2 border-b border-gray-200">{children}</h1>,
+                  h2: ({ children }) => <h2 className="text-lg font-bold mb-2 mt-5 text-black">{children}</h2>,
+                  h3: ({ children }) => <h3 className="text-base font-bold mb-2 mt-4 text-gray-800">{children}</h3>,
+                  h4: ({ children }) => <h4 className="text-sm font-bold mb-2 mt-3 text-gray-800">{children}</h4>,
                 }}
               >
                 {message.content}

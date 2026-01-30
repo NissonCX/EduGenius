@@ -647,6 +647,9 @@ class ChatRequest(BaseModel):
     student_level: int = 3
     stream: bool = True
     user_id: Optional[int] = None  # 可选，如果提供则验证
+    document_id: Optional[int] = None  # 文档ID
+    subsection_id: Optional[str] = None  # 小节ID
+    subsection_title: Optional[str] = None  # 小节标题
 
 
 @router.post("/chat")
@@ -678,7 +681,7 @@ async def chat_with_tutor(
     temp_state: TeachingState = {
         "student_level": request.student_level,
         "user_id": user_id,  # 使用真实用户 ID
-        "document_id": 1,  # TODO: 从数据库获取用户当前学习的文档
+        "document_id": request.document_id or 1,  # 使用请求中的 document_id
         "current_chapter": int(request.chapter_id),
         "chapter_title": f"第{request.chapter_id}章",
         "chapter_content": "",
@@ -694,7 +697,10 @@ async def chat_with_tutor(
         "conversation_history": [],
         "current_step": "chat",
         "needs_level_adjustment": False,
-        "streaming_content": None
+        "streaming_content": None,
+        # 小节信息
+        "subsection_id": request.subsection_id,
+        "subsection_title": request.subsection_title
     }
 
     if request.stream:

@@ -10,8 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Upload, FileText, Trash2, BookOpen, X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useAuth } from '@/contexts/AuthContext'
-import { getApiUrl } from '@/lib/config'
+import { getApiUrl, fetchWithTimeout, getAuthHeadersSimple } from '@/lib/config'
 
 interface Document {
   id: number
@@ -28,12 +27,11 @@ interface Document {
 
 export default function DocumentsPage() {
   const router = useRouter()
-  const { user, isAuthenticated, isLoading, getAuthHeaders } = useAuth()
-  
+
   // 文档列表
   const [documents, setDocuments] = useState<Document[]>([])
   const [loading, setLoading] = useState(true)
-  
+
   // 上传状态
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [uploading, setUploading] = useState(false)
@@ -41,18 +39,43 @@ export default function DocumentsPage() {
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'success' | 'error'>('idle')
   const [uploadMessage, setUploadMessage] = useState('')
 
+  // 用户信息（避免 hydration 问题）
+  const [username, setUsername] = useState<string>('用户')
+  const [mounted, setMounted] = useState(false)
+
+  // 客户端挂载后读取用户信息
+  useEffect(() => {
+    setMounted(true)
+    const userStr = localStorage.getItem('user')
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr)
+        setUsername(user.username || '用户')
+      } catch {
+        setUsername('用户')
+      }
+    }
+  }, [])
+
   // 加载文档列表
   const loadDocuments = useCallback(async () => {
-    // 🔧 FIX: 只在不在加载中且未认证时才跳过
-    if (!isLoading && isAuthenticated === false) {
-      setLoading(false)
-      return
-    }
-
+    console.log('🔄 开始加载文档列表...')
     try {
-      const response = await fetch(getApiUrl('/api/documents/list'), {
-        headers: getAuthHeaders()  // 直接调用，不作为依赖
-      })
+      // 🔧 使用带超时的fetch（10秒超时）和简化的认证头
+      const apiUrl = getApiUrl('/api/documents/list')
+      console.log('📡 API URL:', apiUrl)
+      console.log('🔑 Token 存在?', !!localStorage.getItem('token'))
+
+      const response = await fetchWithTimeout(
+        apiUrl,
+        {
+          method: 'GET',
+          headers: getAuthHeadersSimple()
+        },
+        30000  // 30秒超时（后端可能处理慢）
+      )
+
+      console.log('📥 响应状态:', response.status, response.statusText)
 
       if (response.ok) {
         const data = await response.json()
@@ -60,7 +83,11 @@ export default function DocumentsPage() {
         setDocuments(docs)
 
         // 检查是否有正在处理的文档
-        const hasProcessing = docs.some((doc: Document) => doc.processing_status === 'processing')
+        const hasProcessing = docs.some((doc: Document) =>
+          doc.processing_status === 'processing' ||
+          doc.processing_status === 'ocr_processing' ||
+          doc.processing_status === 'pending'
+        )
         return hasProcessing  // 返回是否还有正在处理的文档
       }
       return false
@@ -70,21 +97,14 @@ export default function DocumentsPage() {
     } finally {
       setLoading(false)
     }
-  }, [isAuthenticated])
+  }, [])
 
   // 轮询设置
   useEffect(() => {
-    // 🔧 FIX: 在认证加载期间不启动轮询
-    if (isLoading) {
-      return
-    }
-
     let intervalId: NodeJS.Timeout | null = null
 
     const startPolling = async () => {
       // 页面可见时立即加载一次
-      await loadDocuments()
-
       const hasProcessing = await loadDocuments()
 
       // 如果有正在处理的文档，启动轮询
@@ -108,7 +128,7 @@ export default function DocumentsPage() {
         clearInterval(intervalId)
       }
     }
-  }, [loadDocuments, isLoading])
+  }, [loadDocuments])
 
   // 文件选择
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -162,7 +182,7 @@ export default function DocumentsPage() {
 
         const response = await fetch(getApiUrl('/api/documents/upload'), {
           method: 'POST',
-          headers: getAuthHeaders(false),
+          headers: getAuthHeadersSimple(false),  // false = 不设置 Content-Type，让浏览器自动处理 FormData
           body: formData
         })
 
@@ -202,7 +222,7 @@ export default function DocumentsPage() {
     try {
       const response = await fetch(getApiUrl(`/api/documents/${documentId}`), {
         method: 'DELETE',
-        headers: getAuthHeaders()
+        headers: getAuthHeadersSimple()
       })
 
       if (response.ok) {
@@ -216,25 +236,6 @@ export default function DocumentsPage() {
     }
   }
 
-  // 🔧 FIX: 只在明确不在加载中且未认证时显示登录提示
-  if (!isLoading && isAuthenticated === false) {
-    return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="text-center">
-          <BookOpen className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-          <h1 className="text-2xl font-semibold mb-4">文档管理</h1>
-          <p className="text-gray-500 mb-6">请先登录以使用文档管理功能</p>
-          <Link
-            href="/login"
-            className="px-6 py-3 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors inline-block"
-          >
-            前往登录
-          </Link>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="min-h-screen bg-white">
       {/* 顶部导航 */}
@@ -246,7 +247,7 @@ export default function DocumentsPage() {
               <h1 className="text-xl font-semibold text-black">文档管理</h1>
             </div>
             <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-600">{user.username}</span>
+              <span className="text-sm text-gray-600">{mounted ? username : '用户'}</span>
               <Link
                 href="/study"
                 className="text-sm text-gray-600 hover:text-black transition-colors"
@@ -358,70 +359,122 @@ export default function DocumentsPage() {
         <div>
           <h2 className="text-lg font-semibold mb-4">我的文档</h2>
 
-          {loading ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-            </div>
-          ) : documents.length === 0 ? (
+          {documents.length === 0 && !loading ? (
             <div className="text-center py-16 bg-gray-50 rounded-xl">
               <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <p className="text-gray-600">还没有上传任何文档</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {documents.map((doc) => (
-                <motion.div
-                  key={doc.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="p-6 bg-white border border-gray-200 rounded-xl hover:shadow-md transition-shadow"
-                >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="p-3 bg-black text-white rounded-lg">
-                      <FileText className="w-6 h-6" />
-                    </div>
-                    <button
-                      onClick={() => handleDelete(doc.id, doc.title)}
-                      className="text-gray-400 hover:text-red-600 transition-colors"
+            <>
+              {/* 处理中的文档提示 */}
+              {documents.some(doc =>
+                doc.processing_status === 'processing' ||
+                doc.processing_status === 'ocr_processing' ||
+                doc.processing_status === 'pending'
+              ) && (
+                <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-3">
+                  <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-blue-900">
+                      有文档正在处理中
+                    </p>
+                    <p className="text-xs text-blue-700">
+                      您可以继续浏览其他内容，处理完成后会自动更新
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {documents.map((doc) => {
+                  const isProcessing =
+                    doc.processing_status === 'processing' ||
+                    doc.processing_status === 'ocr_processing' ||
+                    doc.processing_status === 'pending'
+
+                  return (
+                    <motion.div
+                      key={doc.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className={`p-6 border rounded-xl transition-all ${
+                        isProcessing
+                          ? 'bg-blue-50 border-blue-200'
+                          : 'bg-white border-gray-200 hover:shadow-md'
+                      }`}
                     >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
-                  </div>
+                      <div className="flex items-start justify-between mb-4">
+                        <div className={`p-3 rounded-lg ${
+                          isProcessing
+                            ? 'bg-blue-100 text-blue-600'
+                            : 'bg-black text-white'
+                        }`}>
+                          {isProcessing ? (
+                            <Loader2 className="w-6 h-6 animate-spin" />
+                          ) : (
+                            <FileText className="w-6 h-6" />
+                          )}
+                        </div>
+                        <button
+                          onClick={() => handleDelete(doc.id, doc.title)}
+                          className="text-gray-400 hover:text-red-600 transition-colors"
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                      </div>
 
-                  <h3 className="font-semibold text-black mb-2 line-clamp-2">
-                    {doc.title}
-                  </h3>
+                      <h3 className="font-semibold text-black mb-2 line-clamp-2">
+                        {doc.title}
+                      </h3>
 
-                  <div className="space-y-2 text-sm mb-4">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">类型</span>
-                      <span className="font-medium uppercase">{doc.file_type}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">章节</span>
-                      <span className="font-medium">{doc.total_chapters} 章</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">状态</span>
-                      <span className={`px-2 py-0.5 rounded text-xs ${
-                        doc.processing_status === 'completed'
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-yellow-100 text-yellow-700'
-                      }`}>
-                        {doc.processing_status === 'completed' ? '✓ 已处理' : '处理中'}
-                      </span>
-                    </div>
-                  </div>
+                      <div className="space-y-2 text-sm mb-4">
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">类型</span>
+                          <span className="font-medium uppercase">{doc.file_type}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">章节</span>
+                          <span className="font-medium">{doc.total_chapters} 章</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-600">状态</span>
+                          <span className={`px-2 py-0.5 rounded text-xs flex items-center gap-1 ${
+                            doc.processing_status === 'completed'
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-blue-100 text-blue-700'
+                          }`}>
+                            {doc.processing_status === 'completed' ? (
+                              <>✓ 已处理</>
+                            ) : (
+                              <>
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                                处理中
+                              </>
+                            )}
+                          </span>
+                        </div>
+                      </div>
 
-                  <Link
-                    href={`/study?doc=${doc.id}`}
-                    className="block w-full px-4 py-2 bg-black text-white text-center text-sm rounded-lg hover:bg-gray-800 transition-colors"
-                  >
-                    开始学习
-                  </Link>
-                </motion.div>
-              ))}
-            </div>
+                      <Link
+                        href={`/study?doc=${doc.id}`}
+                        className={`block w-full px-4 py-2 text-center text-sm rounded-lg transition-colors ${
+                          isProcessing
+                            ? 'bg-blue-100 text-blue-600 cursor-not-allowed'
+                            : 'bg-black text-white hover:bg-gray-800'
+                        }`}
+                        onClick={(e) => {
+                          if (isProcessing) {
+                            e.preventDefault()
+                          }
+                        }}
+                      >
+                        {isProcessing ? '处理中...' : '开始学习'}
+                      </Link>
+                    </motion.div>
+                  )
+                })}
+              </div>
+            </>
           )}
         </div>
       </div>

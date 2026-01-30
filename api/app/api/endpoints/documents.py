@@ -842,10 +842,16 @@ async def get_chapter_subsections(
     """
     获取章节的所有小节
     """
-    from sqlalchemy import select
-    from app.models.subsection import Subsection
+    from sqlalchemy import select, text
     from app.models.document import Progress
-    
+
+    print(f"\n{'='*60}")
+    print(f"📚 API: 获取小节列表")
+    print(f"   用户ID: {current_user.id}")
+    print(f"   文档ID: {document_id}")
+    print(f"   章节号: {chapter_number}")
+    print(f"{'='*60}\n")
+
     # 验证章节存在
     progress_result = await db.execute(
         select(Progress).where(
@@ -855,65 +861,55 @@ async def get_chapter_subsections(
         )
     )
     progress = progress_result.scalar_one_or_none()
-    
+
     if not progress:
+        print(f"   ⚠️  章节不存在: user_id={current_user.id}, doc_id={document_id}, chapter={chapter_number}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="章节不存在"
         )
+
+    print(f"   ✅ 找到章节: {progress.chapter_title}")
+
+    # 使用原生SQL查询获取小节（因为 Subsection 不是标准的 ORM 模型）
+    subsections_query = text("""
+        SELECT subsection_number, subsection_title, page_number,
+               completion_percentage, time_spent_minutes
+        FROM subsections
+        WHERE user_id = :user_id
+          AND document_id = :document_id
+          AND chapter_number = :chapter_number
+        ORDER BY subsection_number
+    """)
+
+    result = await db.execute(subsections_query, {
+        "user_id": current_user.id,
+        "document_id": document_id,
+        "chapter_number": chapter_number
+    })
+
+    rows = result.fetchall()
+    subsections = [
+        {
+            "subsection_number": row[0],
+            "subsection_title": row[1],
+            "page_number": row[2],
+            "completion_percentage": row[3] or 0.0,
+            "time_spent_minutes": row[4] or 0.0
+        }
+        for row in rows
+    ]
+
+    print(f"   📊 查询到 {len(subsections)} 个小节")
     
-    # 获取所有小节
-    subsections_result = await db.execute(
-        select(Subsection).where(
-            Subsection.document_id == document_id,
-            Subsection.chapter_number == chapter_number
-        ).order_by(Subsection.subsection_number)
-    )
-    subsections = subsections_result.scalars().all()
-    
-    # 一次性获取所有小节的进度（优化 N+1 查询）
-    subsection_numbers = [s.subsection_number for s in subsections]
-    if subsection_numbers:
-        progress_result = await db.execute(
-            select(Progress).where(
-                Progress.user_id == current_user.id,
-                Progress.document_id == document_id,
-                Progress.chapter_number == chapter_number,
-                Progress.subsection_number.in_(subsection_numbers)
-            )
-        )
-        progress_map = {p.subsection_number: p for p in progress_result.scalars().all()}
-    else:
-        progress_map = {}
-    
-    # 转换为响应格式
-    subsection_list = []
-    for subsection in subsections:
-        # 从 map 中查找进度
-        subsection_progress = progress_map.get(subsection.subsection_number)
-        
-        is_completed = False
-        progress_percentage = 0.0
-        
-        if subsection_progress:
-            is_completed = subsection_progress.status == "completed"
-            progress_percentage = subsection_progress.subsection_progress or 0.0
-        
-        subsection_list.append({
-            "subsection_number": subsection.subsection_number,
-            "subsection_title": subsection.subsection_title,
-            "content_summary": subsection.content_summary,
-            "estimated_time_minutes": subsection.estimated_time_minutes,
-            "is_completed": is_completed,
-            "progress": progress_percentage
-        })
-    
+    print(f"   📤 返回 {len(subsections)} 个小节")
+
     return {
         "document_id": document_id,
         "chapter_number": chapter_number,
         "chapter_title": progress.chapter_title,
-        "total_subsections": len(subsection_list),
-        "subsections": subsection_list
+        "total_subsections": len(subsections),
+        "subsections": subsections
     }
 
 
@@ -1146,27 +1142,35 @@ async def get_document_status(
     stage_message = ""
 
     if status == 'pending':
-        progress_percentage = 0
+        progress_percentage = 5
         stage = "等待处理"
-        stage_message = "文档已上传，等待开始处理..."
+        stage_message = "文档已上传，正在准备处理..."
 
     elif status == 'processing':
-        progress_percentage = 25
+        progress_percentage = 30
         stage = "正在提取文本"
         stage_message = "正在从PDF中提取文本内容..."
 
     elif status == 'ocr_processing':
         if total_pages > 0:
-            progress_percentage = min(90, int((current_page / total_pages) * 100))
+            # OCR 完成 80%，留 20% 给章节划分
+            ocr_progress = int((current_page / total_pages) * 80)
+            progress_percentage = min(80, ocr_progress)
         else:
-            progress_percentage = 50
-        stage = "正在OCR识别"
-        stage_message = f"正在使用AI识别第 {current_page}/{total_pages} 页..."
+            progress_percentage = 40
+
+        # 根据进度显示不同的消息
+        if current_page >= total_pages and total_pages > 0:
+            stage = "正在划分章节"
+            stage_message = "OCR 识别完成，正在使用 AI 划分章节（约需 30 秒）..."
+        else:
+            stage = "正在OCR识别"
+            stage_message = f"正在使用 AI 识别第 {current_page}/{total_pages} 页..."
 
     elif status == 'completed':
         progress_percentage = 100
         stage = "处理完成"
-        stage_message = "文档已成功处理并可以使用"
+        stage_message = "文档已成功处理，可以开始学习"
 
     elif status == 'failed':
         progress_percentage = 0

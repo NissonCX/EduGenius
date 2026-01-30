@@ -35,7 +35,14 @@ export function StreamingMessage({ content, isComplete = false }: StreamingMessa
       {/* 消息内容 */}
       <div className="flex-1 max-w-3xl">
         <div className="inline-block rounded-2xl p-4 bg-gray-50 rounded-tl-sm border border-gray-100">
-          <div className="prose prose-sm max-w-none">
+          <div className="prose prose-sm prose-gray max-w-none
+                      prose-p:text-gray-900 prose-p:leading-relaxed
+                      prose-headings:text-black prose-headings:font-semibold
+                      prose-strong:text-black prose-strong:font-semibold
+                      prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline
+                      prose-pre:bg-gray-900 prose-pre:text-gray-100
+                      prose-code:text-pink-600 prose-code:bg-gray-100 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-mono prose-code:text-sm
+                      prose-blockquote:border-l-4 prose-blockquote:border-gray-300 prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-gray-600">
             <ReactMarkdown
               remarkPlugins={[remarkGfm, remarkMath]}
               rehypePlugins={[rehypeKatex]}
@@ -66,15 +73,16 @@ export function StreamingMessage({ content, isComplete = false }: StreamingMessa
                   )
                 },
                 // 其他元素样式
-                p: ({ children }) => <p className="text-gray-900 mb-2">{children}</p>,
+                p: ({ children }) => <p className="mb-3 leading-7 text-gray-900">{children}</p>,
                 strong: ({ children }) => <strong className="font-semibold text-black">{children}</strong>,
                 em: ({ children }) => <em className="italic text-gray-700">{children}</em>,
-                ul: ({ children }) => <ul className="list-disc list-inside mb-2">{children}</ul>,
-                ol: ({ children }) => <ol className="list-decimal list-inside mb-2">{children}</ol>,
-                li: ({ children }) => <li className="mb-1">{children}</li>,
-                h1: ({ children }) => <h1 className="text-lg font-semibold mb-2 text-black">{children}</h1>,
-                h2: ({ children }) => <h2 className="text-base font-semibold mb-2 text-black">{children}</h2>,
-                h3: ({ children }) => <h3 className="text-sm font-semibold mb-2 text-gray-800">{children}</h3>,
+                ul: ({ children }) => <ul className="list-disc list-inside mb-4 space-y-1 marker:text-gray-900">{children}</ul>,
+                ol: ({ children }) => <ol className="list-decimal list-inside mb-4 space-y-1 marker:text-gray-900">{children}</ol>,
+                li: ({ children }) => <li className="mb-1 leading-7">{children}</li>,
+                h1: ({ children }) => <h1 className="text-xl font-bold mb-3 mt-6 text-black pb-2 border-b border-gray-200">{children}</h1>,
+                h2: ({ children }) => <h2 className="text-lg font-bold mb-2 mt-5 text-black">{children}</h2>,
+                h3: ({ children }) => <h3 className="text-base font-bold mb-2 mt-4 text-gray-800">{children}</h3>,
+                h4: ({ children }) => <h4 className="text-sm font-bold mb-2 mt-3 text-gray-800">{children}</h4>,
               }}
             >
               {content}

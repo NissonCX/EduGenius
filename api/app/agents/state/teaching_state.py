@@ -54,6 +54,10 @@ class TeachingState(TypedDict):
     chapter_title: Annotated[str, "Title of current chapter"]
     chapter_content: Annotated[str, "Content of current chapter"]
 
+    # ========== Subsection Information ==========
+    subsection_id: Annotated[Optional[str], "Current subsection ID (e.g., '1.1')"]
+    subsection_title: Annotated[Optional[str], "Title of current subsection"]
+
     # ========== Learning Progress ==========
     learning_objectives: Annotated[List[str], "Learning objectives for this chapter"]
     wrong_questions: Annotated[List[Dict[str, Any]], "Incorrectly answered questions"]

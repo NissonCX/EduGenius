@@ -200,7 +200,7 @@ export default function UploadPage() {
 
         {/* Toast 通知容器 */}
         <AnimatePresence>
-          {toast.toasts.map((t) => (
+          {toasts.map((t) => (
             <motion.div
               key={t.id}
               initial={{ opacity: 0, y: 50, scale: 0.9 }}

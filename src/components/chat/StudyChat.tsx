@@ -13,41 +13,69 @@ import { Message } from '@/types/chat'
 import { ChatMessage } from './ChatMessage'
 import { StreamingMessage } from './StreamingMessage'
 import { TypingIndicator } from './TypingIndicator'
-import { useAuth } from '@/contexts/AuthContext'
 import { safeFetch, handleApiError, getFriendlyErrorMessage } from '@/lib/errors'
-import { getApiUrl } from '@/lib/config'
+import { getApiUrl, getAuthHeadersSimple } from '@/lib/config'
+
+interface Subsection {
+  subsection_number: string
+  subsection_title: string
+  page_number?: number
+  completion_percentage: number
+}
 
 interface StudyChatProps {
   chapterId?: string
   chapterTitle?: string
+  subsectionId?: string  // 新增：小节ID
+  subsectionTitle?: string  // 新增：小节标题
+  documentId?: number  // 新增：文档ID
+  teachingStyle?: number  // 新增：教学风格
   className?: string
 }
 
 export function StudyChat({
   chapterId = '1',
   chapterTitle = '第一章：线性代数基础',
+  subsectionId,
+  subsectionTitle,
+  documentId,
+  teachingStyle = 3,  // 新增：教学风格 prop，默认 L3
   className = ''
 }: StudyChatProps) {
-  // 使用 useAuth hook 获取真实用户信息
-  const { user, isAuthenticated, isLoading, getAuthHeaders } = useAuth()
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
-  // 导师风格（可临时调整，不保存到数据库）
-  // 直接从 user 对象获取，如果用户未登录则使用默认值3
-  const userStyle = user?.teachingStyle || 3
-  const [currentStyle, setCurrentStyle] = useState<number>(userStyle)
+
+  // 用户信息状态（避免 hydration 问题）
+  const [userId, setUserId] = useState<number | null>(null)
+  const [currentStyle, setCurrentStyle] = useState<number>(teachingStyle)  // 使用 prop 作为初始值
   const [isLoadingHistory, setIsLoadingHistory] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  // 当用户的 teachingStyle 改变时，同步更新 currentStyle
+  // 初始化用户信息和教学风格（仅客户端）
   useEffect(() => {
-    if (user?.teachingStyle) {
-      setCurrentStyle(user.teachingStyle)
+    const userStr = localStorage.getItem('user')
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr)
+        if (user?.id) {
+          setUserId(user.id)
+        }
+      } catch {
+        // 忽略解析错误
+      }
     }
-  }, [user?.teachingStyle])
+  }, [])
+
+  // 监听 teachingStyle prop 的变化（从父组件传入）
+  useEffect(() => {
+    if (teachingStyle && teachingStyle !== currentStyle) {
+      console.log(`[StudyChat] 教学风格更新: L${currentStyle} → L${teachingStyle}`)
+      setCurrentStyle(teachingStyle)
+    }
+  }, [teachingStyle])
 
   // 自动滚动到底部
   const scrollToBottom = () => {
@@ -56,13 +84,13 @@ export function StudyChat({
 
   // 保存对话到数据库
   const saveConversationToDB = async (userMsg: string, aiMsg: string) => {
-    if (!user.id) return
+    if (!userId) return
 
     try {
       // 更新学习进度（增加1分钟学习时间）
-      await fetch(getApiUrl(`/api/users/${user.id}/update-chapter-progress`), {
+      await fetch(getApiUrl(`/api/users/${userId}/update-chapter-progress`), {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers: getAuthHeadersSimple(),
         body: JSON.stringify({
           document_id: 1, // TODO: 从上下文获取真实 document_id
           chapter_number: parseInt(chapterId, 10),
@@ -73,9 +101,9 @@ export function StudyChat({
       })
 
       // 保存用户消息
-      await fetch(getApiUrl(`/api/users/${user.id}/save-conversation`), {
+      await fetch(getApiUrl(`/api/users/${userId}/save-conversation`), {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers: getAuthHeadersSimple(),
         body: JSON.stringify({
           role: 'user',
           content: userMsg,
@@ -85,9 +113,9 @@ export function StudyChat({
       })
 
       // 保存 AI 回复
-      await fetch(getApiUrl(`/api/users/${user.id}/save-conversation`), {
+      await fetch(getApiUrl(`/api/users/${userId}/save-conversation`), {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers: getAuthHeadersSimple(),
         body: JSON.stringify({
           role: 'assistant',
           content: aiMsg,
@@ -107,18 +135,16 @@ export function StudyChat({
     const abortController = new AbortController() // 取消请求
 
     const loadHistory = async () => {
-      // 不要在这里使用 early return，确保 Hooks 顺序一致
-      if (!user.id) {
+      if (!userId) {
         setIsLoadingHistory(false)
         return
       }
 
       try {
-        // 获取历史对话，使用真实用户 ID（使用 safeFetch）
         const historyResponse = await safeFetch(
-          getApiUrl(`/api/users/${user.id}/history?chapter_number=${chapterId}`),
+          getApiUrl(`/api/users/${userId}/history?chapter_number=${chapterId}`),
           {
-            headers: getAuthHeaders(),
+            headers: getAuthHeadersSimple(),
             signal: abortController.signal
           }
         )
@@ -136,10 +162,19 @@ export function StudyChat({
 
           // 如果没有历史记录，显示欢迎消息
           if (historyMessages.length === 0) {
+            // 构建欢迎消息，包含小节信息（如果有）
+            let welcomeContent = `👋 欢迎来到 **${chapterTitle}**！\n\n`
+
+            if (subsectionTitle) {
+              welcomeContent += `当前学习小节：**${subsectionId} ${subsectionTitle}**\n\n`
+            }
+
+            welcomeContent += `我是你的 AI 导师。今天我们将一起探索这个章节的核心概念。\n\n让我们开始吧！请告诉我你想了解的内容，或者我可以为你讲解重点知识。`
+
             historyMessages.push({
               id: 'welcome',
               role: 'assistant',
-              content: `👋 欢迎来到 **${chapterTitle}**！\n\n我是你的 AI 导师。今天我们将一起探索这个章节的核心概念。\n\n让我们开始吧！请告诉我你想了解的内容，或者我可以为你讲解重点知识。`,
+              content: welcomeContent,
               timestamp: new Date()
             })
           }
@@ -150,10 +185,18 @@ export function StudyChat({
 
         } else if (isMounted) {
           // API 失败，显示默认欢迎消息
+          let welcomeContent = `👋 欢迎来到 **${chapterTitle}**！\n\n`
+
+          if (subsectionTitle) {
+            welcomeContent += `当前学习小节：**${subsectionId} ${subsectionTitle}**\n\n`
+          }
+
+          welcomeContent += `我是你的 AI 导师。今天我们将一起探索这个章节的核心概念。\n\n让我们开始吧！请告诉我你想了解的内容，或者我可以为你讲解重点知识。`
+
           setMessages([{
             id: 'welcome',
             role: 'assistant',
-            content: `👋 欢迎来到 **${chapterTitle}**！\n\n我是你的 AI 导师。今天我们将一起探索这个章节的核心概念。\n\n让我们开始吧！请告诉我你想了解的内容，或者我可以为你讲解重点知识。`,
+            content: welcomeContent,
             timestamp: new Date()
           }])
         }
@@ -168,10 +211,18 @@ export function StudyChat({
         
         // 显示默认欢迎消息
         if (isMounted) {
+          let welcomeContent = `👋 欢迎来到 **${chapterTitle}**！\n\n`
+
+          if (subsectionTitle) {
+            welcomeContent += `当前学习小节：**${subsectionId} ${subsectionTitle}**\n\n`
+          }
+
+          welcomeContent += `我是你的 AI 导师。今天我们将一起探索这个章节的核心概念。\n\n让我们开始吧！请告诉我你想了解的内容，或者我可以为你讲解重点知识。`
+
           setMessages([{
             id: 'welcome',
             role: 'assistant',
-            content: `👋 欢迎来到 **${chapterTitle}**！\n\n我是你的 AI 导师。今天我们将一起探索这个章节的核心概念。\n\n让我们开始吧！请告诉我你想了解的内容，或者我可以为你讲解重点知识。`,
+            content: welcomeContent,
             timestamp: new Date()
           }])
         }
@@ -189,7 +240,7 @@ export function StudyChat({
       isMounted = false
       abortController.abort()
     }
-  }, [user.id, chapterId, chapterTitle, getAuthHeaders])
+  }, [chapterId, chapterTitle, userId])
 
   useEffect(() => {
     scrollToBottom()
@@ -199,19 +250,24 @@ export function StudyChat({
   const startStreaming = async (userMessage: string) => {
     setIsStreaming(true)
     setStreamingContent('')
-    
+
     const abortController = new AbortController()
+
+    console.log(`[StudyChat] 发送消息，使用教学风格: L${currentStyle}`)
 
     try {
       const response = await safeFetch(getApiUrl('/api/teaching/chat'), {
         method: 'POST',
-        headers: getAuthHeaders(),
+        headers: getAuthHeadersSimple(),
         body: JSON.stringify({
           message: userMessage,
           chapter_id: chapterId,
           student_level: currentStyle,
           stream: true,
-          user_id: user.id
+          user_id: userId,
+          document_id: documentId,
+          subsection_id: subsectionId,
+          subsection_title: subsectionTitle
         }),
         signal: abortController.signal
       })
@@ -325,7 +381,7 @@ export function StudyChat({
   }
 
   const handleSend = async () => {
-    if (!input.trim() || isStreaming || !user.id) return
+    if (!input.trim() || isStreaming || !userId) return
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -349,21 +405,7 @@ export function StudyChat({
 
   return (
     <div className={`flex flex-col h-full bg-white ${className}`}>
-      {/* 🔧 FIX: 只在明确不在加载中且未认证时显示登录提示 */}
-      {!isLoading && (isAuthenticated === false || !user.id) ? (
-        <div className="flex items-center justify-center h-full">
-          <div className="text-center">
-            <p className="text-gray-500 mb-4">请先登录以开始学习</p>
-            <a
-              href="/login"
-              className="px-6 py-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors"
-            >
-              前往登录
-            </a>
-          </div>
-        </div>
-      ) : (
-        <>
+      <>
           {/* 消息列表 */}
           <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
             {isLoadingHistory ? (
@@ -427,7 +469,6 @@ export function StudyChat({
             </p>
           </div>
         </>
-      )}
     </div>
   )
 }

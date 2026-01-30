@@ -51,13 +51,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
     user: INITIAL_USER,
     token: null,
     isAuthenticated: false,
-    isLoading: true
+    isLoading: false  // 🔧 关键修复：初始状态不阻塞
   })
 
   const router = useRouter()
 
   // 从 localStorage 加载用户信息（组件挂载时执行一次）
   useEffect(() => {
+    // 🔧 设置为加载中
+    setAuthState(prev => ({ ...prev, isLoading: true }))
+
     const loadAuth = () => {
       try {
         const token = localStorage.getItem('token')
@@ -113,11 +116,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
     teachingStyle: number
   ) => {
     try {
+      // Store individual keys (for backward compatibility)
       localStorage.setItem('token', token)
       localStorage.setItem('user_id', userId.toString())
       localStorage.setItem('user_email', email)
       localStorage.setItem('username', username)
       localStorage.setItem('teaching_style', teachingStyle.toString())
+
+      // Also store complete user object (for easy retrieval)
+      const userObj = {
+        id: userId,
+        email,
+        username,
+        teachingStyle
+      }
+      localStorage.setItem('user', JSON.stringify(userObj))
 
       setAuthState({
         user: { id: userId, email, username, teachingStyle, token },
@@ -139,6 +152,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       localStorage.removeItem('user_email')
       localStorage.removeItem('username')
       localStorage.removeItem('teaching_style')
+      localStorage.removeItem('user')  // Also remove the complete user object
 
       setAuthState({
         user: INITIAL_USER,

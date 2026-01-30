@@ -117,14 +117,32 @@
 
 /* Utilities */
 @layer utilities {
-  /* Text balance for headings */
   .text-balance {
     text-wrap: balance;
   }
 
-  /* Hairline border */
   .hairline {
     border-width: 0.5px;
     border-color: #E5E7EB;
+  }
+
+  .prose {
+    --tw-prose-body: #111827;
+    --tw-prose-headings: #000000;
+    --tw-prose-links: #2563eb;
+    --tw-prose-bold: #000000;
+    --tw-prose-counters: #111827;
+    --tw-prose-bullets: #111827;
+    --tw-prose-pre-bg: #1f2937;
+    --tw-prose-pre-code: #e5e7eb;
+    --tw-prose-quote-borders: #d1d5db;
+    --tw-prose-quote-text: #6b7280;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .prose {
+      --tw-prose-invert: #1f2937;
+      --tw-prose-invert-headings: #f9fafb;
+    }
   }
 }

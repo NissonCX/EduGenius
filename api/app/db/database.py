@@ -50,6 +50,10 @@ async def init_db():
     Call this on application startup.
     """
     from app.models.document import Base
+    from app.models.subsection import subsections_table
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    print("✅ Database tables initialized")
+    print(f"   Tables: {list(Base.metadata.tables.keys())}")

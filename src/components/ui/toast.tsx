@@ -110,7 +110,9 @@ type ToastContentProps = ToastProps & {
   description?: string
 }
 
-function Toast({ title, description, ...props }: ToastContentProps) {
+type ToastActionElement = React.ReactElement<typeof ToastAction>
+
+function ToastContent({ title, description, ...props }: ToastContentProps) {
   return (
     <Toast {...props}>
       <div className="grid gap-1">
@@ -123,9 +125,11 @@ function Toast({ title, description, ...props }: ToastContentProps) {
 
 export {
   type ToastProps,
+  type ToastActionElement,
   ToastProvider,
   ToastViewport,
   Toast,
+  ToastContent,
   ToastTitle,
   ToastDescription,
   ToastClose,

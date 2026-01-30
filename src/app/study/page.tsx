@@ -13,9 +13,10 @@ import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { BookOpen, ChevronRight, Lock, CheckCircle2, Loader2, ArrowLeft, Settings, MessageSquare } from 'lucide-react'
-import { useAuth } from '@/contexts/AuthContext'
-import { getApiUrl } from '@/lib/config'
+import { getApiUrl, fetchWithTimeout, getAuthHeadersSimple } from '@/lib/config'
 import { StudyChat } from '@/components/chat/StudyChat'
+import { SubsectionSelector } from '@/components/study/SubsectionSelector'
+import { useAuth } from '@/contexts/AuthContext'
 import Link from 'next/link'
 
 interface Document {
@@ -50,7 +51,7 @@ interface Subsection {
 function StudyPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { user, isAuthenticated, isLoading, getAuthHeaders } = useAuth()
+  const { updateUser, user: authUser } = useAuth()  // 使用 AuthContext 的数据和方法
 
   const docId = searchParams.get('doc')
   const chapterId = searchParams.get('chapter')
@@ -61,74 +62,104 @@ function StudyPageContent() {
   const [selectedDoc, setSelectedDoc] = useState<Document | null>(null)
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null)
   const [loading, setLoading] = useState(true)
-  const [teachingStyle, setTeachingStyle] = useState(user?.teachingStyle || 3)
+  const [teachingStyle, setTeachingStyle] = useState(3)  // 默认 L3
   const [expandedChapter, setExpandedChapter] = useState<number | null>(null)  // 控制章节展开
+  const [currentSubsection, setCurrentSubsection] = useState<Subsection | null>(null)  // 当前选中的小节
+
+  // 初始化教学风格（优先从 AuthContext 读取）
+  useEffect(() => {
+    // 🔧 FIX: 优先使用 AuthContext 的数据，确保全局一致性
+    if (authUser?.teachingStyle !== null && authUser?.teachingStyle !== undefined) {
+      setTeachingStyle(authUser.teachingStyle)
+      console.log(`[Study] 从 AuthContext 读取风格: L${authUser.teachingStyle}`)
+    } else {
+      // 回退：从 localStorage 读取
+      const teachingStyleStr = localStorage.getItem('teaching_style')
+      const userStr = localStorage.getItem('user')
+
+      let style = 3  // 默认 L3
+
+      if (teachingStyleStr) {
+        style = parseInt(teachingStyleStr, 10)
+        console.log(`[Study] 从 'teaching_style' 键读取风格: L${style}`)
+      } else if (userStr) {
+        try {
+          const user = JSON.parse(userStr)
+          if (user?.teachingStyle) {
+            style = user.teachingStyle
+            console.log(`[Study] 从 'user' 对象读取风格: L${style}`)
+          }
+        } catch {
+          // 忽略解析错误
+        }
+      }
+
+      setTeachingStyle(style)
+    }
+  }, [authUser?.id, authUser?.teachingStyle])  // 监听 authUser 的变化
 
   // 加载文档列表
   useEffect(() => {
-    // 🔧 FIX: 只在确定不在加载中且未认证时跳转
-    // 避免在认证状态初始化期间误跳转到登录页
-    if (!isLoading && isAuthenticated === false) {
-      router.push('/login')
-      return
-    }
-
-    // 正在加载中或已认证
-    if (!docId && isAuthenticated) {
+    if (!docId) {
       loadDocuments()
     }
-  }, [isAuthenticated, isLoading, docId])
+  }, [docId])
 
   // 加载章节列表
   useEffect(() => {
-    // 🔧 FIX: 添加 isLoading 检查，避免加载期间请求
-    if (docId && !chapterId && isAuthenticated && !isLoading) {
+    if (docId && !chapterId) {
       loadChapters(parseInt(docId))
     }
-  }, [docId, chapterId, isAuthenticated, isLoading])
+  }, [docId, chapterId])
 
   // 加载选中的章节
   useEffect(() => {
-    // 🔧 FIX: 添加 isLoading 检查，避免加载期间请求
-    if (docId && chapterId && isAuthenticated && !isLoading) {
+    if (docId && chapterId) {
       const chapterNum = parseInt(chapterId)
       if (!isNaN(chapterNum)) {
         loadSelectedChapter(parseInt(docId), chapterNum)
       }
     }
-  }, [docId, chapterId, isAuthenticated, isLoading])
-
-  // 同步用户的教学风格
-  useEffect(() => {
-    if (user?.teachingStyle) {
-      setTeachingStyle(user.teachingStyle)
-    }
-  }, [user?.teachingStyle])
+  }, [docId, chapterId])
 
   const loadDocuments = async () => {
-    setLoading(true)
+    console.log('🔄 [Study] 加载文档列表...')
     try {
-      const response = await fetch(getApiUrl('/api/documents/list'), {
-        headers: getAuthHeaders()
-      })
+      const response = await fetchWithTimeout(
+        getApiUrl('/api/documents/list'),
+        {
+          method: 'GET',
+          headers: getAuthHeadersSimple()
+        },
+        60000  // 60秒超时 - 后端OCR可能阻塞其他请求
+      )
+
+      console.log('📥 [Study] 响应状态:', response.status)
 
       if (response.ok) {
         const data = await response.json()
         setDocuments(data.documents || [])
+      } else {
+        console.warn('⚠️ [Study] API返回错误:', response.status)
       }
     } catch (err) {
-      console.error('加载文档失败:', err)
+      console.error('❌ [Study] 加载文档失败:', err)
+      // 不清空文档列表，保持已有数据
     } finally {
       setLoading(false)
     }
   }
 
   const loadChapters = async (documentId: number) => {
-    setLoading(true)
     try {
-      const response = await fetch(getApiUrl(`/api/documents/${documentId}/chapters`), {
-        headers: getAuthHeaders()
-      })
+      const response = await fetchWithTimeout(
+        getApiUrl(`/api/documents/${documentId}/chapters`),
+        {
+          method: 'GET',
+          headers: getAuthHeadersSimple()
+        },
+        60000  // 60秒超时
+      )
 
       if (response.ok) {
         const data = await response.json()
@@ -142,18 +173,22 @@ function StudyPageContent() {
         setChapters(data.chapters || [])
       }
     } catch (err) {
-      console.error('加载章节失败:', err)
+      console.error('❌ [Study] 加载章节失败:', err)
     } finally {
       setLoading(false)
     }
   }
 
   const loadSelectedChapter = async (documentId: number, chapterNumber: number) => {
-    setLoading(true)
     try {
-      const response = await fetch(getApiUrl(`/api/documents/${documentId}/chapters`), {
-        headers: getAuthHeaders()
-      })
+      const response = await fetchWithTimeout(
+        getApiUrl(`/api/documents/${documentId}/chapters`),
+        {
+          method: 'GET',
+          headers: getAuthHeadersSimple()
+        },
+        60000  // 60秒超时
+      )
 
       if (response.ok) {
         const data = await response.json()
@@ -164,22 +199,92 @@ function StudyPageContent() {
           total_chapters: data.total_chapters,
           processing_status: 'completed'
         })
-        
+
         const chapter = data.chapters.find((c: Chapter) => c.chapter_number === chapterNumber)
         if (chapter) {
           setSelectedChapter(chapter)
         }
       }
     } catch (err) {
-      console.error('加载章节失败:', err)
+      console.error('❌ [Study] 加载章节失败:', err)
     } finally {
       setLoading(false)
     }
   }
 
-  const handleStyleChange = (style: number) => {
-    setTeachingStyle(style)
+  const handleStyleChange = async (style: number) => {
+    console.log(`[Study] 切换教学风格: L${teachingStyle} → L${style}`)
+
+    try {
+      // 获取用户ID
+      const userStr = localStorage.getItem('user')
+      if (!userStr) {
+        console.warn('[Study] 未找到用户信息，无法保存风格')
+        setTeachingStyle(style)
+        return
+      }
+
+      const user = JSON.parse(userStr)
+      const userId = user.id
+
+      // 调用 API 更新教学风格
+      const response = await fetch(getApiUrl(`/api/users/${userId}/teaching-style`), {
+        method: 'PUT',
+        headers: {
+          ...getAuthHeadersSimple(),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ teaching_style: style })
+      })
+
+      if (response.ok) {
+        console.log('[Study] ✅ 教学风格已保存到数据库')
+
+        // 🔧 FIX: 使用 AuthContext 的 updateUser 方法更新全局状态
+        updateUser({ teachingStyle: style })
+
+        // 也更新 user 对象（保持向后兼容）
+        user.teachingStyle = style
+        localStorage.setItem('user', JSON.stringify(user))
+
+        // 更新本地状态
+        setTeachingStyle(style)
+
+        console.log('[Study] ✅ 全局状态已更新:', {
+          'teaching_style': localStorage.getItem('teaching_style'),
+          'user.teachingStyle': JSON.parse(localStorage.getItem('user') || '{}').teachingStyle
+        })
+      } else {
+        const errorData = await response.json()
+        console.error('[Study] ❌ 保存教学风格失败:', response.status, errorData)
+        // 即使 API 失败，也更新本地状态（保持用户体验）
+        setTeachingStyle(style)
+      }
+    } catch (error) {
+      console.error('[Study] ❌ 保存教学风格出错:', error)
+      // 即使出错，也更新本地状态
+      setTeachingStyle(style)
+    }
   }
+
+  const handleSubsectionChange = (subsection: Subsection | null) => {
+    setCurrentSubsection(subsection)
+
+    // 更新URL，添加或移除subsection参数
+    if (subsection) {
+      router.push(`/study?doc=${docId}&chapter=${chapterId}&subsection=${subsection.subsection_number}`)
+    } else {
+      router.push(`/study?doc=${docId}&chapter=${chapterId}`)
+    }
+  }
+
+  // 当URL中的subsection参数变化时，更新currentSubsection
+  useEffect(() => {
+    if (selectedChapter && selectedChapter.subsections) {
+      const subsection = selectedChapter.subsections.find(s => s.subsection_number === subsectionId)
+      setCurrentSubsection(subsection || null)
+    }
+  }, [subsectionId, selectedChapter])
 
   // 1. 文档选择界面
   if (!docId) {
@@ -439,6 +544,19 @@ function StudyPageContent() {
                   </h1>
                   <p className="text-sm text-gray-500">{selectedDoc?.title}</p>
                 </div>
+
+                {/* 小节选择器 */}
+                {selectedChapter.subsection_count && selectedChapter.subsection_count > 0 && (
+                  <div className="ml-4">
+                    <SubsectionSelector
+                      documentId={parseInt(docId)}
+                      chapterId={parseInt(chapterId)}
+                      chapterTitle={selectedChapter.chapter_title}
+                      currentSubsection={subsectionId ?? undefined}
+                      onSubsectionChange={handleSubsectionChange}
+                    />
+                  </div>
+                )}
               </div>
 
               {/* 右侧：导师风格和进度 */}
@@ -518,6 +636,10 @@ function StudyPageContent() {
           <StudyChat
             chapterId={chapterId}
             chapterTitle={selectedChapter.chapter_title}
+            subsectionId={currentSubsection?.subsection_number}
+            subsectionTitle={currentSubsection?.subsection_title}
+            documentId={parseInt(docId)}
+            teachingStyle={teachingStyle}
           />
         </div>
       </div>

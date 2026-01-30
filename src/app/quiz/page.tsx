@@ -243,8 +243,8 @@ function QuizPageContent() {
           onComplete={handleQuizComplete}
           documentId={parseInt(docId!)}
           chapterNumber={parseInt(chapterId!)}
-          userId={user?.id ?? null}
-          token={token ?? null}
+          userId={user?.id ?? undefined}
+          token={token ?? undefined}
           onCompetencyUpdate={handleCompetencyUpdate}
         />
       </div>
