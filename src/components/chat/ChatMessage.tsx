@@ -12,8 +12,33 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
+import { visit } from 'unist-util-visit'
 import { MermaidInText } from '@/components/visualization/MermaidDiagram'
 import 'katex/dist/katex.min.css'
+
+/**
+ * Remark 插件：将代码块从 p 元素中提取出来
+ * 解决 <pre> 不能作为 <p> 子元素的 HTML 结构问题
+ */
+function remarkUnwrapCodeBlocks() {
+  return (tree: any) => {
+    visit(tree, 'element', (node, index, parent) => {
+      // 检查是否是只包含代码块的 p 元素
+      if (
+        node.tagName === 'p' &&
+        node.children &&
+        node.children.length === 1 &&
+        node.children[0].type === 'element' &&
+        node.children[0].tagName === 'pre'
+      ) {
+        // 将父节点的这个子节点替换为 pre 元素
+        if (parent && typeof index === 'number') {
+          parent.children[index] = node.children[0]
+        }
+      }
+    })
+  }
+}
 
 export interface Message {
   id: string
@@ -60,10 +85,10 @@ export function ChatMessage({ message }: ChatMessageProps) {
               {message.content}
             </p>
           ) : (
-            /* AI消息：Markdown渲染 - 不使用 prose 类 */
-            <div className="text-sm text-gray-900">
+            /* AI消息：Markdown渲染 */
+            <div className="text-sm text-gray-900 max-w-none">
               <ReactMarkdown
-                remarkPlugins={[remarkGfm, remarkMath]}
+                remarkPlugins={[remarkGfm, remarkMath, remarkUnwrapCodeBlocks]}
                 rehypePlugins={[rehypeKatex]}
                 components={{
                   // Mermaid 图表渲染
@@ -78,7 +103,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
                     // 代码块
                     if (!inline) {
                       return (
-                        <pre className={`${className || ''} bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto my-3 block`}>
+                        <pre className={`${className || ''} bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto my-3`}>
                           <code className="text-sm font-mono block" {...rest}>
                             {children}
                           </code>
