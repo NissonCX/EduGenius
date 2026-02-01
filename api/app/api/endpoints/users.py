@@ -106,7 +106,7 @@ def classify_question_type(question_text: str) -> str:
     return max(scores, key=scores.get)
 
 
-def calculate_competency_scores_v2(quiz_attempts_with_questions) -> Dict[str, int]:
+def calculate_competency_scores(quiz_attempts_with_questions) -> Dict[str, int]:
     """
     基于答题记录计算六维能力评分（使用Question表中的competency_dimension）
 

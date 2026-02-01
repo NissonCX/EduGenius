@@ -109,6 +109,9 @@ export function ChatMessage({ message }: ChatMessageProps) {
                 <div className="bg-white rounded-2xl rounded-tl-sm shadow-sm border border-gray-200 overflow-hidden">
                   <div className="p-6 markdown-content">
                     <ReactMarkdown
+                      remarkPlugins={[remarkGfm, remarkMath, remarkUnwrapCodeBlocks]}
+                      rehypePlugins={[rehypeKatex]}
+                      components={{
                         // Mermaid 图表
                         code(props: any) {
                           const { node, inline, className, children, ...rest } = props
