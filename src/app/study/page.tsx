@@ -16,6 +16,7 @@ import { BookOpen, ChevronRight, Lock, CheckCircle2, Loader2, ArrowLeft, Setting
 import { getApiUrl, fetchWithTimeout, getAuthHeadersSimple } from '@/lib/config'
 import { StudyChat } from '@/components/chat/StudyChat'
 import { SubsectionSelector } from '@/components/study/SubsectionSelector'
+import { ProgressCard } from '@/components/progress/ProgressCard'
 import { useAuth } from '@/contexts/AuthContext'
 import Link from 'next/link'
 
@@ -525,9 +526,24 @@ function StudyPageContent() {
   // 3. 学习对话界面
   if (docId && chapterId && selectedChapter) {
     return (
-      <div className="fixed inset-0 bg-white z-40 flex flex-col lg:pl-80">
-        {/* 顶部导航栏 */}
-        <div className="border-b border-gray-200 bg-white flex-shrink-0">
+      <div className="fixed inset-0 bg-white z-40 flex">
+        {/* 左侧：学习进度卡片 */}
+        <div className="w-80 border-r border-gray-200 overflow-y-auto hidden lg:block">
+          <div className="p-6">
+            {authUser && (
+              <ProgressCard
+                userId={authUser.id}
+                documentId={parseInt(docId)}
+                chapterNumber={parseInt(chapterId)}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* 右侧：对话区域 */}
+        <div className="flex-1 flex flex-col">
+          {/* 顶部导航栏 */}
+          <div className="border-b border-gray-200 bg-white flex-shrink-0">
           <div className="max-w-7xl mx-auto px-6 py-4">
             <div className="flex items-center justify-between">
               {/* 左侧：返回和标题 */}
@@ -641,6 +657,7 @@ function StudyPageContent() {
             documentId={parseInt(docId)}
             teachingStyle={teachingStyle}
           />
+        </div>
         </div>
       </div>
     )
