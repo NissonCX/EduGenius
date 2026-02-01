@@ -85,7 +85,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
                     // 普通代码块（用 pre 包裹）
                     if (!inline) {
                       return (
-                        <pre className={`${className || ''} bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto`}>
+                        <pre className={`${className || ''} bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto my-4`}>
                           <code className="text-sm font-mono" {...rest}>
                             {children}
                           </code>
@@ -100,9 +100,23 @@ export function ChatMessage({ message }: ChatMessageProps) {
                       </code>
                     )
                   },
-                  pre: ({ children }) => <>{children}</>,
+                  // 移除 pre 包装，直接让 code 处理
+                  pre: ({ children }) => <div className="not-prose">{children}</div>,
                   // 其他元素样式
-                  p: ({ children }) => <p className="mb-3 leading-7 text-gray-900">{children}</p>,
+                  p: ({ children, node }: any) => {
+                    // 检查子元素是否包含块级元素
+                    const hasBlockChild = React.Children.toArray(children).some((child: any) => {
+                      if (React.isValidElement(child)) {
+                        return ['pre', 'div', 'blockquote', 'ul', 'ol', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'table', 'hr'].includes(child.type)
+                      }
+                      return false
+                    })
+
+                    if (hasBlockChild) {
+                      return <div className="mb-3 leading-7 text-gray-900">{children}</div>
+                    }
+                    return <p className="mb-3 leading-7 text-gray-900">{children}</p>
+                  },
                   strong: ({ children }) => <strong className="font-semibold text-black">{children}</strong>,
                   em: ({ children }) => <em className="italic text-gray-700">{children}</em>,
                   ul: ({ children }) => <ul className="list-disc list-inside mb-4 space-y-1 marker:text-gray-900">{children}</ul>,
