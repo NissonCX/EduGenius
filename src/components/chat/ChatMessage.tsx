@@ -5,6 +5,7 @@
  * 极简风格，AI 浅灰背景，用户白色背景带边框
  */
 
+import React from 'react'
 import { motion } from 'framer-motion'
 import { Bot, User } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
