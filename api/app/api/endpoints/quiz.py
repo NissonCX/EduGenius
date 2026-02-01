@@ -8,6 +8,7 @@ from typing import List, Optional
 import json
 import uuid
 from datetime import datetime
+from pydantic import BaseModel
 
 from app.db.database import get_db
 from app.models.document import User, Question, QuizAttempt, Progress, Document
