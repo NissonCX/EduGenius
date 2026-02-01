@@ -98,29 +98,8 @@ export function StreamingMessage({ content, isComplete = false }: StreamingMessa
             {/* 内容 */}
             <div className="max-w-4xl">
               <div className="bg-white rounded-2xl rounded-tl-sm shadow-sm border border-gray-200 overflow-hidden">
-                <div className="p-6">
+                <div className="p-6 markdown-content">
                   <ReactMarkdown
-                    remarkPlugins={[remarkGfm, remarkMath, remarkUnwrapCodeBlocks]}
-                    rehypePlugins={[rehypeKatex]}
-                    className="prose prose-sm max-w-none
-                      prose-headings:font-bold prose-headings:text-gray-900 prose-headings:mt-6 prose-headings:mb-3
-                      prose-h1:text-2xl prose-h1:font-bold
-                      prose-h2:text-xl prose-h2:font-bold
-                      prose-h3:text-lg prose-h3:font-semibold
-                      prose-h4:text-base prose-h4:font-semibold
-                      prose-p:leading-7 prose-p:text-gray-700 prose-p:text-[15px] prose-p:mb-4
-                      prose-strong:text-gray-900 prose-strong:font-semibold
-                      prose-em:text-gray-600
-                      prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline prose-a:font-medium
-                      prose-code:font-mono prose-code:text-[13px] prose-code:bg-gray-100 prose-code:text-gray-800 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded
-                      prose-pre:bg-gray-900 prose-pre:text-gray-100 prose-pre:p-4 prose-pre:rounded-lg prose-pre:my-4
-                      prose-pre:prose-code:bg-transparent prose-pre:prose-code:text-gray-100 prose-pre:prose-code:p-0
-                      prose-blockquote:border-l-4 prose-blockquote:border-gray-300 prose-blockquote:bg-gray-50 prose-blockquote:py-3 prose-blockquote:px-4 prose-blockquote:my-4 prose-blockquote:text-gray-700 prose-blockquote:italic
-                      prose-ul:my-4 prose-ul:space-y-2 prose-ul:pl-4
-                      prose-ol:my-4 prose-ol:space-y-2 prose-ol:pl-4
-                      prose-li:text-gray-700 prose-li:leading-relaxed
-                      prose-hr:border-gray-200 prose-hr:my-6"
-                    components={{
                       // Mermaid 图表
                       code(props: any) {
                         const { node, inline, className, children, ...rest } = props
