@@ -2,8 +2,7 @@
 
 /**
  * StudyChat - 沉浸式学习对话组件
- * 支持 SSE 流式传输、打字机效果、Markdown 渲染
- * 支持会话恢复和历史记录加载
+ * 基于 shadcn/ui 风格的现代化设计
  */
 
 import { useState, useRef, useEffect } from 'react'
@@ -26,20 +25,20 @@ interface Subsection {
 interface StudyChatProps {
   chapterId?: string
   chapterTitle?: string
-  subsectionId?: string  // 新增：小节ID
-  subsectionTitle?: string  // 新增：小节标题
-  documentId?: number  // 新增：文档ID
-  teachingStyle?: number  // 新增：教学风格
+  subsectionId?: string
+  subsectionTitle?: string
+  documentId?: number
+  teachingStyle?: number
   className?: string
 }
 
 export function StudyChat({
   chapterId = '1',
-  chapterTitle = '第一章：线性代数基础',
+  chapterTitle = '第一章',
   subsectionId,
   subsectionTitle,
   documentId,
-  teachingStyle = 3,  // 新增：教学风格 prop，默认 L3
+  teachingStyle = 3,
   className = ''
 }: StudyChatProps) {
   const [messages, setMessages] = useState<Message[]>([])
@@ -47,14 +46,14 @@ export function StudyChat({
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
 
-  // 用户信息状态（避免 hydration 问题）
+  // 用户信息状态
   const [userId, setUserId] = useState<number | null>(null)
-  const [currentStyle, setCurrentStyle] = useState<number>(teachingStyle)  // 使用 prop 作为初始值
+  const [currentStyle, setCurrentStyle] = useState<number>(teachingStyle)
   const [isLoadingHistory, setIsLoadingHistory] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  // 初始化用户信息和教学风格（仅客户端）
+  // 初始化用户信息
   useEffect(() => {
     const userStr = localStorage.getItem('user')
     if (userStr) {
@@ -69,25 +68,23 @@ export function StudyChat({
     }
   }, [])
 
-  // 监听 teachingStyle prop 的变化（从父组件传入）
+  // 监听 teachingStyle prop 变化
   useEffect(() => {
     if (teachingStyle && teachingStyle !== currentStyle) {
-      console.log(`[StudyChat] 教学风格更新: L${currentStyle} → L${teachingStyle}`)
       setCurrentStyle(teachingStyle)
     }
   }, [teachingStyle])
 
-  // 自动滚动到底部
+  // 自动滚动
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
-  // 更新学习进度（后端已自动保存对话，前端只需更新进度）
+  // 更新学习进度
   const updateLearningProgress = async () => {
     if (!userId) return
 
     try {
-      // 更新学习进度（增加1分钟学习时间）
       await fetch(getApiUrl(`/api/users/${userId}/update-chapter-progress`), {
         method: 'POST',
         headers: getAuthHeadersSimple(),
@@ -96,173 +93,30 @@ export function StudyChat({
           chapter_number: parseInt(chapterId, 10),
           chapter_title: chapterTitle,
           time_spent_minutes: 1,
-          completion_percentage: null // 让后端自动计算
+          completion_percentage: null
         })
       })
-    } catch (error) {
-      console.error('更新学习进度失败:', error)
-      // 不影响用户体验
+    } catch (progressError) {
+      console.error('更新学习进度失败:', progressError)
     }
   }
 
-  // 加载历史对话和用户状态
-  useEffect(() => {
-    let isMounted = true // 防止组件卸载后更新状态
-    const abortController = new AbortController() // 取消请求
+  // 开始流式对话
+  const startStreaming = async (messageToSend: string) => {
+    if (!userId) return
 
-    const loadHistory = async () => {
-      if (!userId) {
-        setIsLoadingHistory(false)
-        return
-      }
-
-      const historyUrl = getApiUrl(`/api/users/${userId}/history?chapter_number=${chapterId}`)
-      console.log(`[StudyChat] 加载历史记录: ${historyUrl}`)
-
-      try {
-        const historyResponse = await safeFetch(
-          historyUrl,
-          {
-            headers: getAuthHeadersSimple(),
-            signal: abortController.signal
-          }
-        )
-
-        if (historyResponse.ok && isMounted) {
-          const historyData = await historyResponse.json()
-          console.log('[StudyChat] 历史记录响应:', historyData)
-
-          // 转换历史对话为 Message 格式
-          const historyMessages: Message[] = historyData.conversations.map((conv: any) => ({
-            id: conv.id.toString(),
-            role: conv.role as 'user' | 'assistant',
-            content: conv.content,
-            timestamp: new Date(conv.created_at)
-          }))
-
-          // 如果没有历史记录，显示欢迎消息
-          if (historyMessages.length === 0) {
-            // 构建欢迎消息，包含小节信息（如果有）
-            let welcomeContent = `👋 欢迎来到 **${chapterTitle}**！\n\n`
-
-            if (subsectionTitle) {
-              welcomeContent += `当前学习小节：**${subsectionId} ${subsectionTitle}**\n\n`
-            }
-
-            welcomeContent += `我是你的 AI 导师。今天我们将一起探索这个章节的核心概念。\n\n让我们开始吧！请告诉我你想了解的内容，或者我可以为你讲解重点知识。`
-
-            historyMessages.push({
-              id: 'welcome',
-              role: 'assistant',
-              content: welcomeContent,
-              timestamp: new Date()
-            })
-          }
-
-          if (isMounted) {
-            setMessages(historyMessages)
-          }
-
-        } else if (isMounted) {
-          // API 失败，显示默认欢迎消息
-          let welcomeContent = `👋 欢迎来到 **${chapterTitle}**！\n\n`
-
-          if (subsectionTitle) {
-            welcomeContent += `当前学习小节：**${subsectionId} ${subsectionTitle}**\n\n`
-          }
-
-          welcomeContent += `我是你的 AI 导师。今天我们将一起探索这个章节的核心概念。\n\n让我们开始吧！请告诉我你想了解的内容，或者我可以为你讲解重点知识。`
-
-          setMessages([{
-            id: 'welcome',
-            role: 'assistant',
-            content: welcomeContent,
-            timestamp: new Date()
-          }])
-        }
-      } catch (error: any) {
-        if (error.name === 'AbortError') {
-          console.log('请求已取消')
-          return
-        }
-
-        // 尝试序列化错误对象以便查看
-        console.error('原始错误对象:', error)
-        console.error('错误类型:', typeof error)
-        console.error('错误构造函数:', error?.constructor?.name)
-        console.error('错误键:', Object.keys(error || {}))
-
-        const apiError = handleApiError(error)
-
-        // 使用 JSON.stringify 确保能看到完整内容
-        console.error('加载历史失败，错误详情:', JSON.stringify({
-          message: apiError.message,
-          status: apiError.status,
-          code: apiError.code,
-          details: apiError.details
-        }, null, 2))
-
-        // 如果是认证错误，不显示欢迎消息
-        if (apiError.status === 401) {
-          console.warn('用户未登录，跳过历史记录加载')
-          if (isMounted) {
-            setIsLoadingHistory(false)
-          }
-          return
-        }
-
-        // 显示默认欢迎消息
-        if (isMounted) {
-          let welcomeContent = `👋 欢迎来到 **${chapterTitle}**！\n\n`
-
-          if (subsectionTitle) {
-            welcomeContent += `当前学习小节：**${subsectionId} ${subsectionTitle}**\n\n`
-          }
-
-          welcomeContent += `我是你的 AI 导师。今天我们将一起探索这个章节的核心概念。\n\n让我们开始吧！请告诉我你想了解的内容，或者我可以为你讲解重点知识。`
-
-          setMessages([{
-            id: 'welcome',
-            role: 'assistant',
-            content: welcomeContent,
-            timestamp: new Date()
-          }])
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoadingHistory(false)
-        }
-      }
-    }
-
-    loadHistory()
-
-    // 清理函数
-    return () => {
-      isMounted = false
-      abortController.abort()
-    }
-  }, [chapterId, chapterTitle, userId])
-
-  useEffect(() => {
-    scrollToBottom()
-  }, [messages, streamingContent])
-
-  // SSE 流式响应（优化版）
-  const startStreaming = async (userMessage: string) => {
     setIsStreaming(true)
     setStreamingContent('')
 
-    const abortController = new AbortController()
-
-    console.log(`[StudyChat] 发送消息，使用教学风格: L${currentStyle}`)
-
     try {
-      const response = await safeFetch(getApiUrl('/api/teaching/chat'), {
+      const response = await fetch(getApiUrl('/api/teaching/chat'), {
         method: 'POST',
-        headers: getAuthHeadersSimple(),
+        headers: {
+          ...getAuthHeadersSimple(),
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify({
-          message: userMessage,
+          message: messageToSend,
           chapter_id: chapterId,
           student_level: currentStyle,
           stream: true,
@@ -270,8 +124,7 @@ export function StudyChat({
           document_id: documentId,
           subsection_id: subsectionId,
           subsection_title: subsectionTitle
-        }),
-        signal: abortController.signal
+        })
       })
 
       if (!response.ok) {
@@ -281,80 +134,61 @@ export function StudyChat({
       const reader = response.body?.getReader()
       const decoder = new TextDecoder()
 
-      if (!reader) throw new Error('No reader available')
+      if (!reader) {
+        throw new Error('无法读取响应流')
+      }
 
-      let buffer = ''
       let fullContent = ''
-      let chunkCount = 0
-      const startTime = Date.now()
 
       while (true) {
         const { done, value } = await reader.read()
+
         if (done) break
 
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split('\n')
 
         for (const line of lines) {
-          if (line.trim() === '') continue
           if (line.startsWith('data: ')) {
             const data = line.slice(6).trim()
-            if (data === '[DONE]') continue
+
+            if (data === '[DONE]') {
+              // 流式完成
+              setStreamingContent('')
+
+              const assistantMessage: Message = {
+                id: Date.now().toString(),
+                role: 'assistant',
+                content: fullContent,
+                timestamp: new Date()
+              }
+
+              setMessages(prev => [...prev, assistantMessage])
+              fullContent = ''
+              break
+            }
 
             try {
               const parsed = JSON.parse(data)
 
-              // 处理不同类型的 SSE 数据
               if (parsed.content) {
-                chunkCount++
                 fullContent += parsed.content
-
-                // 打字机效果：逐字符累积
                 setStreamingContent(fullContent)
-
-                // 调试日志（开发时使用）
-                if (process.env.NODE_ENV === 'development') {
-                  console.log(`Chunk ${chunkCount}:`, parsed.content?.substring(0, 20))
-                }
-              } else if (parsed.error) {
-                throw new Error(parsed.error)
-              } else if (parsed.status) {
-                // 处理状态更新
-                console.log('Stream status:', parsed.status)
               }
-            } catch (e) {
-              // JSON 解析错误，记录但继续处理
-              if (process.env.NODE_ENV === 'development') {
-                console.warn('Failed to parse SSE data:', data, e)
-              }
+            } catch (parseError) {
+              // 忽略解析错误
             }
           }
         }
+
+        scrollToBottom()
       }
 
-      const duration = Date.now() - startTime
-      console.log(`Streaming complete: ${chunkCount} chunks in ${duration}ms`)
-
-      // 流式结束，保存完整消息
-      if (fullContent) {
-        const assistantMessage: Message = {
-          id: Date.now().toString(),
-          role: 'assistant',
-          content: fullContent,
-          timestamp: new Date()
-        }
-        setMessages(prev => [...prev, assistantMessage])
-
-        // 更新学习进度（对话已由后端自动保存）
-        try {
-          await updateLearningProgress()
-        } catch (progressError) {
-          console.error('更新学习进度失败:', progressError)
-        }
-      } else {
-        // 没有收到内容，显示错误消息
-        throw new Error('未收到响应内容')
+      // 更新进度
+      try {
+        await updateLearningProgress()
+      } catch (progressError) {
+        console.error('更新学习进度失败:', progressError)
       }
 
     } catch (error: any) {
@@ -362,13 +196,12 @@ export function StudyChat({
         console.log('请求已取消')
         return
       }
-      
+
       const apiError = handleApiError(error)
       const friendlyMessage = getFriendlyErrorMessage(apiError)
 
       console.error('Streaming error:', apiError)
 
-      // 显示友好的错误提示
       const errorMessage: Message = {
         id: Date.now().toString(),
         role: 'assistant',
@@ -406,68 +239,98 @@ export function StudyChat({
   }
 
   return (
-    <div className={`flex flex-col h-full w-full bg-white ${className}`}>
+    <div className={`flex flex-col h-full bg-gray-50 ${className}`}>
       {/* 消息列表 */}
-      <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4 min-h-0">
+      <div className="flex-1 overflow-y-auto">
         {isLoadingHistory ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
-            <p className="ml-3 text-sm text-gray-500">正在加载学习历史...</p>
+          <div className="flex items-center justify-center h-full min-h-[400px]">
+            <div className="flex flex-col items-center gap-4">
+              <div className="animate-spin rounded-full h-10 w-10 border-3 border-gray-300 border-t-indigo-600"></div>
+              <p className="text-sm text-gray-600 font-medium">加载学习历史中...</p>
+            </div>
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex items-center justify-center h-full min-h-[400px] px-4">
+            <div className="text-center max-w-md">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-indigo-100 rounded-full mb-4">
+                <span className="text-3xl">💬</span>
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                开始学习吧！
+              </h3>
+              <p className="text-sm text-gray-600">
+                提问任何问题，AI 导师会为你解答
+              </p>
+            </div>
           </div>
         ) : (
-          <AnimatePresence>
-            {messages.map((message) => (
-              <ChatMessage key={message.id} message={message} />
-            ))}
-          </AnimatePresence>
+          <div className="py-2">
+            <AnimatePresence mode="popLayout">
+              {messages.map((message) => (
+                <ChatMessage key={message.id} message={message} />
+              ))}
+            </AnimatePresence>
+          </div>
         )}
 
-        {/* 流式消息（打字机效果） */}
+        {/* 流式消息 */}
         {isStreaming && streamingContent && (
           <StreamingMessage content={streamingContent} isComplete={false} />
         )}
 
         {/* 正在思考指示器 */}
         {isStreaming && !streamingContent && (
-          <TypingIndicator />
+          <div className="px-4 py-6">
+            <TypingIndicator />
+          </div>
         )}
 
         <div ref={messagesEndRef} />
       </div>
 
       {/* 输入框 */}
-      <div className="border-t border-gray-200 px-6 py-4 bg-white flex-shrink-0">
-        <div className="flex items-end gap-3 max-w-5xl mx-auto">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="输入你的问题... (Shift+Enter 换行)"
-            className="flex-1 px-4 py-3 bg-white border-2 border-gray-200 rounded-xl resize-none focus:outline-none focus:border-black transition-all text-sm"
-            rows={1}
-            disabled={isStreaming}
-            style={{ minHeight: '48px', maxHeight: '150px' }}
-          />
+      <div className="border-t border-gray-200 bg-white px-4 py-4 flex-shrink-0">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-end gap-3">
+            <div className="flex-1 relative">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="输入你的问题... (Shift+Enter 换行)"
+                className="w-full px-4 py-3 pr-12 bg-gray-50 border-2 border-gray-200 rounded-xl resize-none focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 transition-all text-sm placeholder:text-gray-400"
+                rows={1}
+                disabled={isStreaming}
+                style={{ minHeight: '52px', maxHeight: '160px' }}
+              />
+              <div className="absolute right-3 bottom-3 text-xs text-gray-400">
+                {input.length > 0 && `${input.length} 字`}
+              </div>
+            </div>
 
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={handleSend}
-            disabled={isStreaming || !input.trim()}
-            className="px-6 py-3 bg-black text-white rounded-xl hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex-shrink-0 h-12"
-          >
-            {isStreaming ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
-            ) : (
-              <Send className="w-5 h-5" />
-            )}
-          </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={handleSend}
+              disabled={isStreaming || !input.trim()}
+              className="px-5 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl hover:from-indigo-600 hover:to-purple-700 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm hover:shadow-md flex-shrink-0 h-[52px] flex items-center justify-center gap-2 font-medium text-sm"
+            >
+              {isStreaming ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <>
+                  <Send className="w-5 h-5" />
+                  <span className="hidden sm:inline">发送</span>
+                </>
+              )}
+            </motion.button>
+          </div>
+
+          <p className="text-xs text-gray-500 mt-2 text-center">
+            按 Enter 发送，Shift+Enter 换行
+          </p>
         </div>
-
-        <p className="text-xs text-gray-500 mt-3 text-center max-w-5xl mx-auto">
-          按 Enter 发送，Shift+Enter 换行
-        </p>
       </div>
     </div>
   )
