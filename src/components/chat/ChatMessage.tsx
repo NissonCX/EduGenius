@@ -12,7 +12,6 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
-import DOMPurify from 'dompurify'
 import { MermaidInText } from '@/components/visualization/MermaidDiagram'
 import 'katex/dist/katex.min.css'
 
@@ -61,15 +60,8 @@ export function ChatMessage({ message }: ChatMessageProps) {
               {message.content}
             </p>
           ) : (
-            /* AI消息：Markdown渲染 */
-            <div className="prose prose-sm prose-gray max-w-none
-                      prose-p:text-gray-900 prose-p:leading-relaxed
-                      prose-headings:text-black prose-headings:font-semibold
-                      prose-strong:text-black prose-strong:font-semibold
-                      prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline
-                      prose-pre:bg-gray-900 prose-pre:text-gray-100
-                      prose-code:text-pink-600 prose-code:bg-gray-100 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-mono prose-code:text-sm
-                      prose-blockquote:border-l-4 prose-blockquote:border-gray-300 prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-gray-600">
+            /* AI消息：Markdown渲染 - 不使用 prose 类 */
+            <div className="text-sm text-gray-900">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm, remarkMath]}
                 rehypePlugins={[rehypeKatex]}
@@ -83,11 +75,11 @@ export function ChatMessage({ message }: ChatMessageProps) {
                       return <MermaidInText text={`\`\`\`mermaid\n${code}\n\`\`\``} />
                     }
 
-                    // 普通代码块（用 pre 包裹）
+                    // 代码块
                     if (!inline) {
                       return (
-                        <pre className={`${className || ''} bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto my-4`}>
-                          <code className="text-sm font-mono" {...rest}>
+                        <pre className={`${className || ''} bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto my-3 block`}>
+                          <code className="text-sm font-mono block" {...rest}>
                             {children}
                           </code>
                         </pre>
@@ -101,23 +93,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
                       </code>
                     )
                   },
-                  // 移除 pre 包装，直接让 code 处理
-                  pre: ({ children }) => <div className="not-prose">{children}</div>,
-                  // 其他元素样式
-                  p: ({ children, node }: any) => {
-                    // 检查子元素是否包含块级元素
-                    const hasBlockChild = React.Children.toArray(children).some((child: any) => {
-                      if (React.isValidElement(child)) {
-                        return ['pre', 'div', 'blockquote', 'ul', 'ol', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'table', 'hr'].includes(child.type)
-                      }
-                      return false
-                    })
-
-                    if (hasBlockChild) {
-                      return <div className="mb-3 leading-7 text-gray-900">{children}</div>
-                    }
-                    return <p className="mb-3 leading-7 text-gray-900">{children}</p>
-                  },
+                  p: ({ children }) => <p className="mb-3 leading-7">{children}</p>,
                   strong: ({ children }) => <strong className="font-semibold text-black">{children}</strong>,
                   em: ({ children }) => <em className="italic text-gray-700">{children}</em>,
                   ul: ({ children }) => <ul className="list-disc list-inside mb-4 space-y-1 marker:text-gray-900">{children}</ul>,
@@ -127,6 +103,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
                   h2: ({ children }) => <h2 className="text-lg font-bold mb-2 mt-5 text-black">{children}</h2>,
                   h3: ({ children }) => <h3 className="text-base font-bold mb-2 mt-4 text-gray-800">{children}</h3>,
                   h4: ({ children }) => <h4 className="text-sm font-bold mb-2 mt-3 text-gray-800">{children}</h4>,
+                  blockquote: ({ children }) => <blockquote className="border-l-4 border-gray-300 pl-4 italic text-gray-600 mb-4">{children}</blockquote>,
                 }}
               >
                 {message.content}
