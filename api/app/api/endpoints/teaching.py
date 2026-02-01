@@ -652,6 +652,278 @@ class ChatRequest(BaseModel):
     subsection_title: Optional[str] = None  # 小节标题
 
 
+# ============ 新增：学习进度分析端点 ============
+
+async def calculate_completion_progress(
+    db: AsyncSession,
+    user_id: int,
+    document_id: int,
+    chapter_number: int
+) -> dict:
+    """
+    计算章节完成度 (0-100%)
+
+    根据对话轮数、对话深度、测试表现等综合计算
+    """
+    from app.models.document import ConversationHistory, QuizAttempt, Progress
+    from sqlalchemy import select, func
+
+    # 1. 获取对话数据
+    conv_result = await db.execute(
+        select(ConversationHistory).where(
+            ConversationHistory.user_id == user_id,
+            ConversationHistory.document_id == document_id,
+            ConversationHistory.chapter_number == chapter_number
+        )
+    )
+    conversations = conv_result.scalars().all()
+
+    user_messages = [c for c in conversations if c.role == 'user']
+    ai_messages = [c for c in conversations if c.role == 'assistant']
+
+    # 2. 获取测试数据
+    quiz_result = await db.execute(
+        select(QuizAttempt).join(Progress).where(
+            Progress.user_id == user_id,
+            Progress.document_id == document_id,
+            Progress.chapter_number == chapter_number
+        )
+    )
+    quiz_attempts = quiz_result.scalars().all()
+
+    # 3. 计算各项指标
+    dialogue_rounds = len(user_messages)
+
+    # 平均对话深度（字数）
+    total_words = sum(len(c.content) for c in conversations)
+    avg_depth = total_words / len(conversations) if conversations else 0
+
+    # 测试表现
+    quiz_score = 0
+    if quiz_attempts:
+        correct_count = sum(1 for q in quiz_attempts if q.is_correct)
+        quiz_score = (correct_count / len(quiz_attempts)) * 100
+
+    # 4. 综合计算
+    progress = 0
+
+    # 对话轮数（目标：至少10轮）- 权重 20%
+    if dialogue_rounds >= 10:
+        progress += 20
+    else:
+        progress += (dialogue_rounds / 10) * 20
+
+    # 对话深度（目标：平均50字）- 权重 15%
+    if avg_depth >= 50:
+        progress += 15
+    else:
+        progress += (avg_depth / 50) * 15
+
+    # 测试表现 - 权重 30%
+    progress += quiz_score * 0.3
+
+    # 活跃度（最近有学习）- 权重 10%
+    if conversations:
+        last_conv_time = max(c.created_at for c in conversations)
+        if (datetime.now() - last_conv_time).days <= 7:
+            progress += 10
+
+    # 内容覆盖度（基础）- 权重 25%
+    if dialogue_rounds >= 3:
+        progress += 25
+    elif dialogue_rounds >= 1:
+        progress += 10
+
+    return min(int(progress), 100)
+
+
+@router.get("/progress-analysis")
+async def get_progress_analysis(
+    user_id: int,
+    document_id: int,
+    chapter_number: int,
+    current_user: Optional[User] = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    获取学习进度分析
+
+    返回:
+    - completion_percentage: 完成百分比 (0-100)
+    - dialogue_rounds: 对话轮数
+    - study_time_minutes: 学习时长（分钟）
+    - keypoints_learned: 已学知识点
+    - keypoints_learning: 学习中知识点
+    - mastery_level: 掌握程度
+    - recommendations: 学习建议
+    """
+    from app.models.document import ConversationHistory, QuizAttempt, Progress
+    from sqlalchemy import select
+
+    # 验证用户权限
+    if current_user and current_user.id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="无权访问其他用户的数据"
+        )
+
+    # 1. 计算完成度
+    completion = await calculate_completion_progress(
+        db, user_id, document_id, chapter_number
+    )
+
+    # 2. 获取对话数据
+    conv_result = await db.execute(
+        select(ConversationHistory).where(
+            ConversationHistory.user_id == user_id,
+            ConversationHistory.document_id == document_id,
+            ConversationHistory.chapter_number == chapter_number
+        ).order_by(ConversationHistory.created_at.desc())
+    )
+    conversations = conv_result.scalars().all()
+
+    # 3. 计算学习时长（分钟）
+    study_time_minutes = 0
+    if conversations:
+        # 假设每次对话平均 3 分钟
+        study_time_minutes = len(conversations) * 3
+
+    # 4. 获取测试数据
+    quiz_result = await db.execute(
+        select(QuizAttempt).join(Progress).where(
+            Progress.user_id == user_id,
+            Progress.document_id == document_id,
+            Progress.chapter_number == chapter_number
+        )
+    )
+    quiz_attempts = quiz_result.scalars().all()
+
+    # 5. 分析掌握程度
+    dialogue_rounds = len([c for c in conversations if c.role == 'user'])
+    quiz_success_rate = 0
+    if quiz_attempts:
+        correct_count = sum(1 for q in quiz_attempts if q.is_correct)
+        quiz_success_rate = (correct_count / len(quiz_attempts)) * 100
+
+    # 判断掌握等级
+    if quiz_success_rate >= 90 and dialogue_rounds >= 10:
+        mastery_level = "advanced"
+        mastery_text = "精通"
+    elif quiz_success_rate >= 70 and dialogue_rounds >= 7:
+        mastery_level = "proficient"
+        mastery_text = "熟练"
+    elif quiz_success_rate >= 50 and dialogue_rounds >= 5:
+        mastery_level = "intermediate"
+        mastery_text = "掌握"
+    elif dialogue_rounds >= 3:
+        mastery_level = "beginner"
+        mastery_text = "入门"
+    else:
+        mastery_level = "novice"
+        mastery_text = "初学"
+
+    # 6. 生成学习建议
+    recommendations = []
+    if dialogue_rounds < 5:
+        recommendations.append("建议多提问，与老师进行更多互动")
+    if quiz_success_rate < 60 and quiz_attempts:
+        recommendations.append("建议复习错题，巩固知识点")
+    if completion < 50:
+        recommendations.append("继续学习，完成更多对话练习")
+    if completion >= 80:
+        recommendations.append("可以尝试进行章节测试，检验学习成果")
+
+    return {
+        "completion_percentage": completion,
+        "dialogue_rounds": dialogue_rounds,
+        "study_time_minutes": study_time_minutes,
+        "quiz_attempts": len(quiz_attempts),
+        "quiz_success_rate": round(quiz_success_rate, 1),
+        "mastery_level": mastery_level,
+        "mastery_text": mastery_text,
+        "recommendations": recommendations,
+        "last_activity": conversations[0].created_at.isoformat() if conversations else None
+    }
+
+
+@router.get("/conversation-summary")
+async def get_conversation_summary(
+    user_id: int,
+    document_id: int,
+    chapter_number: int,
+    current_user: Optional[User] = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    获取对话摘要
+
+    返回:
+    - summary: 对话摘要
+    - key_concepts: 讨论的关键概念
+    - user_questions_count: 用户提问数
+    - last_discussed: 最后讨论时间
+    """
+    from app.models.document import ConversationHistory
+    from sqlalchemy import select
+
+    # 验证用户权限
+    if current_user and current_user.id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="无权访问其他用户的数据"
+        )
+
+    # 获取对话记录
+    result = await db.execute(
+        select(ConversationHistory).where(
+            ConversationHistory.user_id == user_id,
+            ConversationHistory.document_id == document_id,
+            ConversationHistory.chapter_number == chapter_number
+        ).order_by(ConversationHistory.created_at.asc())
+    )
+    conversations = result.scalars().all()
+
+    if not conversations:
+        return {
+            "summary": "还没有开始学习这个章节",
+            "key_concepts": [],
+            "user_questions_count": 0,
+            "last_discussed": None
+        }
+
+    # 统计
+    user_questions = [c for c in conversations if c.role == 'user']
+    user_questions_count = len(user_questions)
+
+    # 提取关键概念（简单实现：从用户问题中提取关键词）
+    # TODO: 可以使用 NLP 技术进行更精确的关键词提取
+    key_concepts = set()
+    for conv in user_questions[:10]:  # 分析最近10个问题
+        content = conv.content
+        # 简单提取：识别中文词汇（2-4个字）
+        import re
+        concepts = re.findall(r'[\u4e00-\u9fff]{2,4}', content)
+        key_concepts.update(concepts[:3])  # 每个问题最多取3个概念
+
+    # 生成简单摘要
+    if user_questions_count == 0:
+        summary = "还没有提问，开始与老师对话吧！"
+    elif user_questions_count < 5:
+        summary = f"进行了 {user_questions_count} 轮对话，正在初步探索章节内容。"
+    elif user_questions_count < 10:
+        summary = f"进行了 {user_questions_count} 轮对话，逐步深入理解知识点。"
+    else:
+        summary = f"进行了 {user_questions_count} 轮对话，深入学习了章节内容。"
+
+    return {
+        "summary": summary,
+        "key_concepts": list(key_concepts)[:10],  # 最多返回10个概念
+        "user_questions_count": user_questions_count,
+        "total_messages": len(conversations),
+        "last_discussed": conversations[-1].created_at.isoformat() if conversations else None
+    }
+
+
 @router.post("/chat")
 async def chat_with_tutor(
     request: ChatRequest,
