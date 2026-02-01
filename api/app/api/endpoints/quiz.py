@@ -28,6 +28,35 @@ from app.core.security import get_current_user
 router = APIRouter(prefix="/api/quiz", tags=["quiz"])
 
 
+# ============ Session 管理 ============
+# 内存中存储测试 session（生产环境应使用 Redis）
+quiz_sessions: dict = {}
+
+
+class QuizSession:
+    """测试会话数据结构"""
+    def __init__(
+        self,
+        session_id: str,
+        user_id: int,
+        document_id: int,
+        chapter_number: int,
+        questions: List[dict],
+        mode: str = "practice"
+    ):
+        self.session_id = session_id
+        self.user_id = user_id
+        self.document_id = document_id
+        self.chapter_number = chapter_number
+        self.questions = questions  # 题目列表
+        self.mode = mode  # practice 或 test
+        self.answers = {}  # {question_id: answer}
+        self.results = {}  # {question_id: is_correct}
+        self.current_question_index = 0
+        self.started_at = datetime.now()
+        self.completed_at = None
+
+
 # ============ 辅助函数 ============
 
 def classify_question_dimension(question_text: str) -> str:
@@ -413,3 +442,302 @@ async def submit_chapter_test(
         passed=passed,
         recommendations=recommendations
     )
+
+
+# ============ 新增：Session 测试流程端点 ============
+
+class StartSessionRequest(BaseModel):
+    """开始测试请求"""
+    document_id: int
+    chapter_number: int
+    question_count: int = 10
+    mode: str = "practice"  # practice 或 test
+
+
+@router.post("/start-session")
+async def start_quiz_session(
+    request: StartSessionRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    开始一个新的测试 session
+
+    返回 session_id 和题目列表
+    """
+    # 获取章节题目
+    result = await db.execute(
+        select(Question).where(
+            and_(
+                Question.document_id == request.document_id,
+                Question.chapter_number == request.chapter_number,
+                Question.is_active == 1
+            )
+        )
+    )
+    all_questions = result.scalars().all()
+
+    if len(all_questions) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="该章节暂无题目，请等待 AI 生成或手动添加题目"
+        )
+
+    # 随机抽取题目
+    import random
+    count = min(request.question_count, len(all_questions))
+    selected_questions = random.sample(list(all_questions), count)
+
+    # 构造题目数据（不包含答案）
+    questions_data = []
+    for q in selected_questions:
+        q_dict = {
+            "id": q.id,
+            "question_type": q.question_type,
+            "question_text": q.question_text,
+            "difficulty": q.difficulty,
+            "competency_dimension": q.competency_dimension
+        }
+        if q.options:
+            try:
+                q_dict["options"] = json.loads(q.options) if isinstance(q.options, str) else q.options
+            except:
+                q_dict["options"] = None
+        questions_data.append(q_dict)
+
+    # 创建 session
+    session_id = str(uuid.uuid4())
+    session = QuizSession(
+        session_id=session_id,
+        user_id=current_user.id,
+        document_id=request.document_id,
+        chapter_number=request.chapter_number,
+        questions=questions_data,
+        mode=request.mode
+    )
+    quiz_sessions[session_id] = session
+
+    return {
+        "session_id": session_id,
+        "questions": questions_data,
+        "total_questions": len(questions_data),
+        "estimated_time": len(questions_data) * 2,  # 每题约 2 分钟
+        "mode": request.mode
+    }
+
+
+class SubmitAnswerRequest(BaseModel):
+    """提交答案请求"""
+    answer: str
+    time_spent: int = 0  # 秒
+
+
+@router.post("/{session_id}/submit-answer")
+async def submit_session_answer(
+    session_id: str,
+    question_id: int,
+    request: SubmitAnswerRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    提交单题答案，返回即时反馈
+
+    返回:
+    - is_correct: 是否正确
+    - correct_answer: 正确答案
+    - explanation: 解析
+    - feedback: 反馈信息
+    """
+    # 获取 session
+    session = quiz_sessions.get(session_id)
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="测试 session 不存在或已过期"
+        )
+
+    # 验证用户
+    if session.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="无权访问此 session"
+        )
+
+    # 获取题目信息
+    question_result = await db.execute(
+        select(Question).where(Question.id == question_id)
+    )
+    question = question_result.scalar_one_or_none()
+
+    if not question:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="题目不存在"
+        )
+
+    # 验证答案
+    is_correct = request.answer.strip().upper() == question.correct_answer.strip().upper()
+
+    # 记录答案和结果
+    session.answers[question_id] = request.answer
+    session.results[question_id] = is_correct
+
+    # 生成反馈
+    if is_correct:
+        feedback = "✅ 回答正确！"
+    else:
+        feedback = f"❌ 回答错误。正确答案是：{question.correct_answer}"
+
+    return {
+        "is_correct": is_correct,
+        "correct_answer": question.correct_answer,
+        "explanation": question.explanation,
+        "feedback": feedback,
+        "question_number": session.current_question_index + 1
+    }
+
+
+@router.post("/{session_id}/complete")
+async def complete_quiz_session(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    完成测试，返回完整分析
+
+    返回:
+    - score: 总分
+    - total: 总题数
+    - correct: 正确数
+    - passed: 是否通过
+    - competency_analysis: 能力分析
+    - weak_points: 薄弱环节
+    - recommendations: 学习建议
+    - mistake_ids: 错题 ID 列表
+    """
+    # 获取 session
+    session = quiz_sessions.get(session_id)
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="测试 session 不存在或已过期"
+        )
+
+    # 验证用户
+    if session.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="无权访问此 session"
+        )
+
+    # 标记完成
+    session.completed_at = datetime.now()
+
+    # 获取题目信息（用于分析）
+    question_ids = [q["id"] for q in session.questions]
+    questions_result = await db.execute(
+        select(Question).where(Question.id.in_(question_ids))
+    )
+    questions_map = {q.id: q for q in questions_result.scalars().all()}
+
+    # 统计结果
+    total = len(session.questions)
+    correct = sum(1 for q_id in session.results if session.results.get(q_id, False))
+    score = (correct / total * 100) if total > 0 else 0
+    passed = score >= 60
+
+    # 能力维度分析
+    competency_scores = {
+        "comprehension": {"correct": 0, "total": 0},
+        "logic": {"correct": 0, "total": 0},
+        "terminology": {"correct": 0, "total": 0},
+        "memory": {"correct": 0, "total": 0},
+        "application": {"correct": 0, "total": 0},
+        "stability": {"correct": 0, "total": 0}
+    }
+
+    mistake_ids = []
+
+    for q_id, is_correct in session.results.items():
+        question = questions_map.get(q_id)
+        if not question:
+            continue
+
+        dimension = question.competency_dimension or "comprehension"
+        competency_scores[dimension]["total"] += 1
+        if is_correct:
+            competency_scores[dimension]["correct"] += 1
+        else:
+            mistake_ids.append(q_id)
+
+    # 计算各维度得分
+    competency_analysis = {}
+    for dim, data in competency_scores.items():
+        if data["total"] > 0:
+            competency_analysis[dim] = round(
+                (data["correct"] / data["total"]) * 100, 1
+            )
+        else:
+            competency_analysis[dim] = None
+
+    # 识别薄弱环节
+    weak_points = []
+    for dim, score_val in competency_analysis.items():
+        if score_val is not None and score_val < 60:
+            weak_points.append({
+                "dimension": dim,
+                "score": score_val,
+                "name": {
+                    "comprehension": "理解力",
+                    "logic": "逻辑推理",
+                    "terminology": "术语掌握",
+                    "memory": "记忆力",
+                    "application": "应用能力",
+                    "stability": "稳定性"
+                }.get(dim, dim)
+            })
+
+    # 生成学习建议
+    recommendations = []
+
+    if passed:
+        recommendations.append("🎉 恭喜你通过测试！可以进入下一章节学习了。")
+    else:
+        recommendations.append("📚 建议复习本章内容后再进行测试。")
+
+    if score >= 90:
+        recommendations.append("⭐ 表现优秀！你的掌握程度很高。")
+    elif score >= 70:
+        recommendations.append("👍 表现良好，继续保持！")
+    elif score >= 50:
+        recommendations.append("💪 还需要继续努力，建议针对错题进行复习。")
+
+    if weak_points:
+        weak_names = [w["name"] for w in weak_points]
+        recommendations.append(f"📌 建议加强对以下能力的练习：{', '.join(weak_names)}")
+
+    if mistake_ids:
+        recommendations.append(f"📝 你有 {len(mistake_ids)} 道错题，建议加入错题本进行复习。")
+
+    # 计算用时
+    time_spent_minutes = 0
+    if session.completed_at and session.started_at:
+        time_spent = (session.completed_at - session.started_at).total_seconds()
+        time_spent_minutes = int(time_spent / 60)
+
+    # 清理 session（可选：保留一段时间供查询）
+    # del quiz_sessions[session_id]
+
+    return {
+        "score": round(score, 1),
+        "total": total,
+        "correct": correct,
+        "passed": passed,
+        "competency_analysis": competency_analysis,
+        "weak_points": weak_points,
+        "recommendations": recommendations,
+        "mistake_ids": mistake_ids,
+        "time_spent_minutes": time_spent_minutes
+    }
