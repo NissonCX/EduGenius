@@ -26,6 +26,13 @@ from app.core.security import (
     get_current_user_optional,
     Token
 )
+from app.core.constants import (
+    LEVEL_THRESHOLDS,
+    LEVEL_NAMES,
+    COMPLETION_THRESHOLD,
+    DEFAULT_COMPETENCY_SCORE,
+    PASSWORD_REQUIREMENTS
+)
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -558,21 +565,14 @@ async def assess_user_level(
     avg_score = total_score / len(answers) if answers else 0
 
     # 根据得分确定等级
-    if avg_score >= 90:
-        recommended_level = 5
-        level_name = "专家 (Expert)"
-    elif avg_score >= 75:
-        recommended_level = 4
-        level_name = "高级 (Advanced)"
-    elif avg_score >= 60:
-        recommended_level = 3
-        level_name = "进阶 (Intermediate)"
-    elif avg_score >= 40:
-        recommended_level = 2
-        level_name = "入门 (Beginner)"
-    else:
-        recommended_level = 1
-        level_name = "基础 (Foundation)"
+    recommended_level = 1
+    level_name = LEVEL_NAMES[1]
+    
+    for level in sorted(LEVEL_THRESHOLDS.keys(), reverse=True):
+        if avg_score >= LEVEL_THRESHOLDS[level]:
+            recommended_level = level
+            level_name = LEVEL_NAMES[level]
+            break
 
     return {
         "recommended_level": recommended_level,

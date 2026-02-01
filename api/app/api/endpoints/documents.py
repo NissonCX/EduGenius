@@ -21,6 +21,7 @@ from app.crud.document import (
 from app.services.document_processor import process_uploaded_document, DocumentProcessor
 from app.core.chroma import create_document_collection, add_document_chunks
 from app.core.security import get_current_user
+from app.core.constants import MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_MB
 from app.core.logging_config import get_logger
 from app.schemas.document import (
     DocumentUploadResponse,
