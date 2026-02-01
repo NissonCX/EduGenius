@@ -2,11 +2,11 @@
 
 /**
  * ChatMessage - 聊天气泡组件
- * 黑白灰极简设计风格
+ * 优化的 Markdown 渲染，黑白灰极简设计风格
  */
 
 import React from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { Bot, User, Copy, Check } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -62,11 +62,10 @@ export function ChatMessage({ message }: ChatMessageProps) {
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
       transition={{ duration: 0.2 }}
-      className="group relative px-4 py-6 hover:bg-gray-50 transition-colors"
+      className="group relative px-4 py-6 hover:bg-gray-50/50 transition-colors"
     >
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-4xl mx-auto">
         <div className={`flex gap-4 ${isUser ? 'flex-row-reverse' : ''}`}>
           {/* 头像 */}
           <div className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center ring-2 ring-white shadow-sm ${
@@ -96,22 +95,20 @@ export function ChatMessage({ message }: ChatMessageProps) {
 
             {/* 内容 */}
             <div className={`relative ${
-              isUser
-                ? 'ml-auto max-w-2xl'
-                : 'max-w-3xl'
+              isUser ? 'ml-auto max-w-2xl' : 'max-w-4xl'
             }`}>
               {/* 用户消息 */}
               {isUser ? (
-                <div className="bg-black text-white rounded-2xl rounded-tr-sm px-4 py-3 shadow-sm">
+                <div className="bg-black text-white rounded-2xl rounded-tr-sm px-5 py-3 shadow-sm">
                   <p className="text-sm leading-relaxed whitespace-pre-wrap">
                     {message.content}
                   </p>
                 </div>
               ) : (
-                /* AI消息 - 优化的 Markdown 渲染 */
-                <div className="bg-white rounded-2xl rounded-tl-sm shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
-                  <div className="p-5">
-                    <div className="prose prose-sm max-w-none">
+                /* AI 消息 - 优化的 Markdown 渲染 */
+                <div className="bg-white rounded-2xl rounded-tl-sm shadow-sm border border-gray-200 overflow-hidden">
+                  <div className="p-6">
+                    <div className="prose-content max-w-none">
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm, remarkMath, remarkUnwrapCodeBlocks]}
                         rehypePlugins={[rehypeKatex]}
@@ -127,29 +124,36 @@ export function ChatMessage({ message }: ChatMessageProps) {
 
                             // 代码块
                             if (!inline) {
+                              const code = String(children).replace(/\n$/, '')
                               return (
-                                <div className="group relative my-4">
-                                  <div className="absolute -top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                                <div className="group relative my-5">
+                                  {/* 复制按钮 */}
+                                  <div className="absolute -top-3 right-3 z-10">
                                     <button
-                                      onClick={() => {
-                                        const codeText = String(children).replace(/\n$/, '')
-                                        navigator.clipboard.writeText(codeText)
-                                      }}
-                                      className="p-1.5 bg-gray-800 hover:bg-gray-700 rounded-md text-gray-200 hover:text-white transition-colors shadow-sm"
+                                      onClick={() => navigator.clipboard.writeText(code)}
+                                      className="opacity-0 group-hover:opacity-100 transition-opacity bg-gray-800 hover:bg-gray-700 text-gray-200 p-2 rounded-md shadow-sm"
                                       title="复制代码"
                                     >
                                       <Copy className="w-4 h-4" />
                                     </button>
                                   </div>
-                                  <div className="bg-gray-900 rounded-lg overflow-hidden shadow-lg border border-gray-800">
-                                    <div className="flex items-center justify-between px-4 py-2 bg-gray-800/90 border-b border-gray-700">
+
+                                  {/* 代码块容器 */}
+                                  <div className="bg-gray-900 rounded-xl overflow-hidden shadow-lg border border-gray-800">
+                                    {/* 语言标签 */}
+                                    <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
                                       <span className="text-xs font-medium text-gray-300 font-mono">
                                         {className?.replace('language-', '') || 'code'}
                                       </span>
-                                      <span className="text-[10px] text-gray-500">CODE</span>
+                                      <span className="text-[10px] text-gray-500 uppercase tracking-wide">Code</span>
                                     </div>
-                                    <pre className={`${className || ''} p-4 overflow-x-auto`}>
-                                      <code className="text-sm font-mono text-gray-100" {...rest}>
+
+                                    {/* 代码内容 */}
+                                    <pre className="p-5 overflow-x-auto">
+                                      <code
+                                        className={`text-sm font-mono text-gray-100 ${className || ''}`}
+                                        {...rest}
+                                      >
                                         {children}
                                       </code>
                                     </pre>
@@ -160,53 +164,83 @@ export function ChatMessage({ message }: ChatMessageProps) {
 
                             // 行内代码
                             return (
-                              <code className="font-mono text-[13px] bg-gray-100 text-gray-800 px-1.5 py-0.5 rounded" {...rest}>
+                              <code
+                                className="font-mono text-[13px] bg-gray-100 text-gray-800 px-1.5 py-0.5 rounded-md"
+                                {...rest}
+                              >
                                 {children}
                               </code>
                             )
                           },
+
                           // 标题
                           h1: ({ children }) => (
-                            <h1 className="text-xl font-bold mt-6 mb-4 text-gray-900 scroll-mt-8">
+                            <h1 className="text-2xl font-bold mt-8 mb-4 text-gray-900 leading-tight">
                               {children}
                             </h1>
                           ),
                           h2: ({ children }) => (
-                            <h2 className="text-lg font-bold mt-5 mb-3 text-gray-900 scroll-mt-8">
+                            <h2 className="text-xl font-bold mt-6 mb-3 text-gray-900 leading-tight">
                               {children}
                             </h2>
                           ),
                           h3: ({ children }) => (
-                            <h3 className="text-base font-semibold mt-4 mb-3 text-gray-800 scroll-mt-8">
+                            <h3 className="text-lg font-semibold mt-5 mb-3 text-gray-800 leading-tight">
                               {children}
                             </h3>
                           ),
+                          h4: ({ children }) => (
+                            <h4 className="text-base font-semibold mt-4 mb-2 text-gray-800 leading-tight">
+                              {children}
+                            </h4>
+                          ),
+
+                          // 段落
+                          p: ({ children }) => (
+                            <p className="mb-4 leading-7 text-[15px] text-gray-700">
+                              {children}
+                            </p>
+                          ),
+
+                          // 文本样式
+                          strong: ({ children }) => (
+                            <strong className="font-semibold text-gray-900">
+                              {children}
+                            </strong>
+                          ),
+                          em: ({ children }) => (
+                            <em className="italic text-gray-600">
+                              {children}
+                            </em>
+                          ),
+
                           // 列表
                           ul: ({ children }) => (
-                            <ul className="my-4 space-y-2">
+                            <ul className="my-4 space-y-2 pl-4">
                               {children}
                             </ul>
                           ),
                           ol: ({ children }) => (
-                            <ol className="my-4 space-y-2">
+                            <ol className="my-4 space-y-2 pl-4 list-decimal">
                               {children}
                             </ol>
                           ),
                           li: ({ children }) => (
-                            <li className="leading-relaxed text-gray-700 flex items-start gap-2">
-                              <span className="text-gray-900 mt-1 flex-shrink-0">•</span>
-                              <span className="flex-1">{children}</span>
+                            <li className="leading-relaxed text-gray-700 pl-2">
+                              {children}
                             </li>
                           ),
+
                           // 引用块
                           blockquote: ({ children }) => (
-                            <blockquote className="border-l-4 border-gray-300 bg-gray-50 py-3 px-4 my-4 text-gray-700 rounded-r-lg">
+                            <blockquote className="border-l-4 border-gray-300 bg-gray-50 py-4 px-5 my-5 text-gray-700 rounded-r-lg italic">
                               {children}
                             </blockquote>
                           ),
+
                           // 表格
                           table: ({ children }) => (
-                            <div className="my-4 overflow-x-auto rounded-lg border border-gray-200">
+                            <div className="my-5 overflow-x-auto rounded-xl border border-gray-200">
                               <table className="min-w-full divide-y divide-gray-200">
                                 {children}
                               </table>
@@ -218,29 +252,42 @@ export function ChatMessage({ message }: ChatMessageProps) {
                             </thead>
                           ),
                           tbody: ({ children }) => (
-                            <tbody className="bg-white divide-y divide-gray-200">
+                            <tbody className="bg-white divide-y divide-gray-100">
                               {children}
                             </tbody>
                           ),
                           tr: ({ children }) => (
-                            <tr className="hover:bg-gray-50 transition-colors">
+                            <tr className="hover:bg-gray-50/80 transition-colors">
                               {children}
                             </tr>
                           ),
                           th: ({ children }) => (
-                            <th className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
                               {children}
                             </th>
                           ),
                           td: ({ children }) => (
-                            <td className="px-4 py-2 text-sm text-gray-700">
+                            <td className="px-4 py-3 text-sm text-gray-700">
                               {children}
                             </td>
                           ),
-                          // 段落
-                          p: ({ children }) => <p className="mb-4 leading-7 text-[15px] text-gray-700">{children}</p>,
-                          strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
-                          em: ({ children }) => <em className="italic text-gray-600">{children}</em>,
+
+                          // 分隔线
+                          hr: () => (
+                            <hr className="my-8 border-t border-gray-200" />
+                          ),
+
+                          // 链接
+                          a: ({ children, href }) => (
+                            <a
+                              href={href}
+                              className="text-blue-600 hover:text-blue-700 hover:underline font-medium transition-colors"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              {children}
+                            </a>
+                          ),
                         }}
                       >
                         {message.content}
@@ -249,25 +296,23 @@ export function ChatMessage({ message }: ChatMessageProps) {
                   </div>
 
                   {/* AI 操作按钮 */}
-                  <div className="flex items-center justify-between px-5 py-3 bg-gray-50 border-t border-gray-200 rounded-b-2xl">
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={handleCopy}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-200 rounded-lg transition-all cursor-pointer"
-                      >
-                        {copied ? (
-                          <>
-                            <Check className="w-3.5 h-3.5 text-gray-600" />
-                            <span>已复制</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3.5 h-3.5" />
-                            <span>复制</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
+                  <div className="flex items-center justify-between px-6 py-3 bg-gray-50 border-t border-gray-200">
+                    <button
+                      onClick={handleCopy}
+                      className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-gray-700 hover:text-gray-900 hover:bg-gray-200 rounded-lg transition-all cursor-pointer"
+                    >
+                      {copied ? (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          <span>已复制</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>复制</span>
+                        </>
+                      )}
+                    </button>
                     <span className="text-xs text-gray-500">
                       AI 生成内容
                     </span>
