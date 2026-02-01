@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 import hashlib
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -209,7 +209,7 @@ async def get_current_user(
 
 
 async def get_current_user_optional(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    request: Request,
     db: AsyncSession = Depends(get_db)
 ) -> Optional[User]:
     """
@@ -218,16 +218,18 @@ async def get_current_user_optional(
     与 get_current_user 不同，如果未认证则返回 None 而不是抛出异常
 
     Args:
-        credentials: HTTP Bearer credentials
+        request: FastAPI Request 对象
         db: 数据库 session
 
     Returns:
         User: 当前用户对象，如果未认证则返回 None
     """
-    if credentials is None:
+    # 从 Authorization header 获取 token
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
         return None
 
-    token = credentials.credentials
+    token = auth_header.split(" ")[1]
     token_data = verify_token(token)
 
     if token_data is None:

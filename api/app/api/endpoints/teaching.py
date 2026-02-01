@@ -655,15 +655,21 @@ class ChatRequest(BaseModel):
 @router.post("/chat")
 async def chat_with_tutor(
     request: ChatRequest,
-    current_user: Optional[User] = Depends(get_current_user_optional)
+    current_user: Optional[User] = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db)
 ):
     """
-    简化的对话端点，兼容前端 StudyChat 组件调用格式。
+    带对话记忆的对话端点，兼容前端 StudyChat 组件调用格式。
 
-    直接调用 Tutor 智能体生成回复，并以 SSE 流式返回。
+    1. 加载历史对话记录
+    2. 调用 Tutor 智能体生成回复
+    3. 以 SSE 流式返回
+    4. 自动保存对话到数据库
     """
     from app.agents.nodes.tutor import TutorAgent
     from app.core.config import settings, get_model_name
+    from app.models.document import ConversationHistory
+    from sqlalchemy import select
 
     # 获取真实用户 ID（优先使用认证用户，其次使用请求中的 user_id）
     user_id = current_user.id if current_user else request.user_id
@@ -673,15 +679,49 @@ async def chat_with_tutor(
             detail="需要提供用户认证"
         )
 
+    # 🔥 加载历史对话记录（最近20条）
+    history_query = select(ConversationHistory).where(
+        ConversationHistory.user_id == user_id
+    )
+
+    # 如果指定了章节，加载该章节的历史记录
+    if request.chapter_id:
+        history_query = history_query.where(
+            ConversationHistory.chapter_number == int(request.chapter_id)
+        )
+
+    # 如果指定了文档，加载该文档的历史记录
+    if request.document_id:
+        history_query = history_query.where(
+            ConversationHistory.document_id == request.document_id
+        )
+
+    history_query = history_query.order_by(
+        ConversationHistory.created_at.desc()
+    ).limit(20)
+
+    history_result = await db.execute(history_query)
+    history_records = history_result.scalars().all()
+
+    # 转换为 LangChain 消息格式（最新的在最后）
+    conversation_history = []
+    for record in reversed(history_records):
+        if record.role == "user":
+            conversation_history.append(HumanMessage(content=record.content))
+        else:
+            conversation_history.append(AIMessage(content=record.content))
+
+    logger.info(f"📚 加载了 {len(conversation_history)} 条历史对话记录 for user {user_id}")
+
     # 创建 Tutor 智能体
     model_name = get_model_name(request.student_level)
     tutor = TutorAgent(api_key=settings.DASHSCOPE_API_KEY, model=model_name)
 
-    # 准备对话状态
+    # 准备对话状态（包含历史记录）
     temp_state: TeachingState = {
         "student_level": request.student_level,
-        "user_id": user_id,  # 使用真实用户 ID
-        "document_id": request.document_id or 1,  # 使用请求中的 document_id
+        "user_id": user_id,
+        "document_id": request.document_id or 1,
         "current_chapter": int(request.chapter_id),
         "chapter_title": f"第{request.chapter_id}章",
         "chapter_content": "",
@@ -694,11 +734,10 @@ async def chat_with_tutor(
         "examiner_questions": [],
         "tutor_explanation": None,
         "feedback": None,
-        "conversation_history": [],
+        "conversation_history": conversation_history,  # 🔥 使用加载的历史记录
         "current_step": "chat",
         "needs_level_adjustment": False,
         "streaming_content": None,
-        # 小节信息
         "subsection_id": request.subsection_id,
         "subsection_title": request.subsection_title
     }
@@ -707,7 +746,8 @@ async def chat_with_tutor(
         # SSE 流式响应
         async def event_generator():
             timeout_seconds = 180  # 3分钟超时
-            
+            full_response = ""  # 用于存储完整响应
+
             try:
                 async with asyncio.timeout(timeout_seconds):
                     # 生成回复
@@ -715,6 +755,7 @@ async def chat_with_tutor(
                         temp_state,
                         request.message
                     )
+                    full_response = response  # 保存完整响应
 
                     # 按词/短语分割（优化流式性能）
                     import re
@@ -735,6 +776,36 @@ async def chat_with_tutor(
 
                     # 发送完成标记
                     yield f"data: [DONE]\n\n"
+
+                    # 🔥 保存对话到数据库（流式结束后）
+                    try:
+                        # 保存用户消息
+                        user_conv = ConversationHistory(
+                            user_id=user_id,
+                            document_id=request.document_id or 1,
+                            chapter_number=int(request.chapter_id),
+                            role="user",
+                            content=request.message,
+                            student_level_at_time=request.student_level
+                        )
+                        db.add(user_conv)
+
+                        # 保存 AI 回复
+                        assistant_conv = ConversationHistory(
+                            user_id=user_id,
+                            document_id=request.document_id or 1,
+                            chapter_number=int(request.chapter_id),
+                            role="assistant",
+                            content=full_response,
+                            student_level_at_time=request.student_level
+                        )
+                        db.add(assistant_conv)
+
+                        await db.commit()
+                        logger.info(f"💾 已保存对话记录 for user {user_id}")
+                    except Exception as save_error:
+                        logger.error(f"❌ 保存对话失败: {save_error}")
+                        # 不影响用户体验，继续响应
 
             except asyncio.TimeoutError:
                 error_event = {

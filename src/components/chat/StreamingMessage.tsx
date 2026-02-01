@@ -19,7 +19,42 @@ interface StreamingMessageProps {
   isComplete?: boolean
 }
 
+/**
+ * 修复流式传输时不完整的 Markdown 格式
+ * - 确保代码块标记闭合
+ * - 确保数学公式闭合
+ */
+function fixIncompleteMarkdown(content: string): string {
+  let fixed = content
+
+  // 检查未闭合的代码块
+  const codeBlockCount = (content.match(/```/g) || []).length
+  if (codeBlockCount % 2 !== 0) {
+    // 如果代码块未闭合，添加结束标记（仅在内容较长时）
+    if (content.length > 50) {
+      fixed += '\n```'
+    }
+  }
+
+  // 检查未闭合的行内代码
+  const inlineCodeCount = (content.match(/`/g) || []).length
+  if (inlineCodeCount % 2 !== 0) {
+    fixed += '`'
+  }
+
+  // 检查未闭合的数学公式
+  const mathBlockCount = (content.match(/\$\$/g) || []).length
+  if (mathBlockCount % 2 !== 0) {
+    fixed += '$$'
+  }
+
+  return fixed
+}
+
 export function StreamingMessage({ content, isComplete = false }: StreamingMessageProps) {
+  // 如果未完成，尝试修复不完整的 Markdown
+  const renderContent = isComplete ? content : fixIncompleteMarkdown(content)
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -56,22 +91,25 @@ export function StreamingMessage({ content, isComplete = false }: StreamingMessa
                     return <MermaidInText text={`\`\`\`mermaid\n${code}\n\`\`\``} />
                   }
 
-                  // 普通代码块
+                  // 普通代码块（用 pre 包裹）
                   if (!inline) {
                     return (
-                      <code className={`${className || ''} block`} {...rest}>
-                        {children}
-                      </code>
+                      <pre className={`${className || ''} bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto`}>
+                        <code className="text-sm font-mono" {...rest}>
+                          {children}
+                        </code>
+                      </pre>
                     )
                   }
 
                   // 行内代码
                   return (
-                    <code className="px-1.5 py-0.5 bg-gray-200 rounded text-sm font-mono" {...rest}>
+                    <code className="px-1.5 py-0.5 bg-gray-200 rounded text-sm font-mono text-pink-600" {...rest}>
                       {children}
                     </code>
                   )
                 },
+                pre: ({ children }) => <>{children}</>,
                 // 其他元素样式
                 p: ({ children }) => <p className="mb-3 leading-7 text-gray-900">{children}</p>,
                 strong: ({ children }) => <strong className="font-semibold text-black">{children}</strong>,
@@ -85,7 +123,7 @@ export function StreamingMessage({ content, isComplete = false }: StreamingMessa
                 h4: ({ children }) => <h4 className="text-sm font-bold mb-2 mt-3 text-gray-800">{children}</h4>,
               }}
             >
-              {content}
+              {renderContent}
             </ReactMarkdown>
           </div>
 
@@ -98,7 +136,7 @@ export function StreamingMessage({ content, isComplete = false }: StreamingMessa
                 exit={{ opacity: 0 }}
                 transition={{
                   duration: 0.8,
-                  repeat: 1,
+                  repeat: Infinity,
                   ease: "easeInOut"
                 }}
                 className="inline-block w-0.5 h-4 bg-black ml-1 align-middle"

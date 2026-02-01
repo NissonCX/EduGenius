@@ -525,9 +525,9 @@ function StudyPageContent() {
   // 3. 学习对话界面
   if (docId && chapterId && selectedChapter) {
     return (
-      <div className="flex flex-col h-screen bg-white">
+      <div className="fixed inset-0 bg-white z-40 flex flex-col lg:pl-80">
         {/* 顶部导航栏 */}
-        <div className="border-b border-gray-200 bg-white">
+        <div className="border-b border-gray-200 bg-white flex-shrink-0">
           <div className="max-w-7xl mx-auto px-6 py-4">
             <div className="flex items-center justify-between">
               {/* 左侧：返回和标题 */}
@@ -632,7 +632,7 @@ function StudyPageContent() {
         </div>
 
         {/* 主学习区域 - 全屏对话 */}
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden min-h-0">
           <StudyChat
             chapterId={chapterId}
             chapterTitle={selectedChapter.chapter_title}

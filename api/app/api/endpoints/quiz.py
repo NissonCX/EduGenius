@@ -11,6 +11,7 @@ from datetime import datetime
 
 from app.db.database import get_db
 from app.models.document import User, Question, QuizAttempt, Progress, Document
+from app.core.security import get_current_user_optional  # 添加导入
 from app.schemas.quiz import (
     QuestionGenerate,
     QuestionResponse,
@@ -122,36 +123,66 @@ async def generate_questions(
     return questions
 
 
-@router.get("/questions/{document_id}/{chapter_number}", response_model=QuestionListResponse)
+@router.get("/questions/{document_id}/{chapter_number}")
 async def get_chapter_questions(
     document_id: int,
     chapter_number: int,
     question_type: Optional[str] = None,
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    获取指定章节的题目列表
+    获取指定章节的题目列表（简化版，快速响应）
     """
-    query = select(Question).where(
-        and_(
-            Question.document_id == document_id,
-            Question.chapter_number == chapter_number,
-            Question.is_active == 1
+    try:
+        query = select(Question).where(
+            and_(
+                Question.document_id == document_id,
+                Question.chapter_number == chapter_number,
+                Question.is_active == 1
+            )
         )
-    )
 
-    if question_type:
-        query = query.where(Question.question_type == question_type)
+        if question_type:
+            query = query.where(Question.question_type == question_type)
 
-    result = await db.execute(query)
-    questions = result.scalars().all()
+        result = await db.execute(query)
+        questions = result.scalars().all()
 
-    return QuestionListResponse(
-        questions=questions,
-        total=len(questions),
-        chapter_number=chapter_number
-    )
+        # 快速构造响应
+        questions_data = []
+        for q in questions:
+            q_dict = {
+                "id": q.id,
+                "question_type": q.question_type,
+                "question_text": q.question_text,
+                "difficulty": q.difficulty,
+                "competency_dimension": q.competency_dimension,
+                "correct_answer": q.correct_answer,
+                "explanation": q.explanation
+            }
+            # 只有选择题才有 options
+            if q.options:
+                try:
+                    import json
+                    q_dict["options"] = json.loads(q.options) if isinstance(q.options, str) else q.options
+                except:
+                    q_dict["options"] = None
+            questions_data.append(q_dict)
+
+        return {
+            "questions": questions_data,
+            "total": len(questions_data),
+            "chapter_number": chapter_number
+        }
+    except Exception as e:
+        from app.core.logging_config import get_logger
+        logger = get_logger(__name__)
+        logger.error(f"获取题目失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取题目失败: {str(e)}"
+        )
 
 
 @router.post("/submit", response_model=QuizSubmitResponse)

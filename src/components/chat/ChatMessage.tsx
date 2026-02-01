@@ -82,22 +82,25 @@ export function ChatMessage({ message }: ChatMessageProps) {
                       return <MermaidInText text={`\`\`\`mermaid\n${code}\n\`\`\``} />
                     }
 
-                    // 普通代码块
+                    // 普通代码块（用 pre 包裹）
                     if (!inline) {
                       return (
-                        <code className={`${className || ''} block`} {...rest}>
-                          {children}
-                        </code>
+                        <pre className={`${className || ''} bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto`}>
+                          <code className="text-sm font-mono" {...rest}>
+                            {children}
+                          </code>
+                        </pre>
                       )
                     }
 
                     // 行内代码
                     return (
-                      <code className="px-1.5 py-0.5 bg-gray-200 rounded text-sm font-mono" {...rest}>
+                      <code className="px-1.5 py-0.5 bg-gray-200 rounded text-sm font-mono text-pink-600" {...rest}>
                         {children}
                       </code>
                     )
                   },
+                  pre: ({ children }) => <>{children}</>,
                   // 其他元素样式
                   p: ({ children }) => <p className="mb-3 leading-7 text-gray-900">{children}</p>,
                   strong: ({ children }) => <strong className="font-semibold text-black">{children}</strong>,

@@ -12,6 +12,8 @@ from app.api.endpoints.documents import router as documents_router
 from app.api.endpoints.teaching import router as teaching_router
 from app.api.endpoints.users import router as users_router
 from app.api.endpoints.quiz import router as quiz_router
+from app.api.endpoints import quiz_ai
+quiz_ai_router = quiz_ai.router
 from app.api.endpoints.mistakes import router as mistakes_router
 from app.core.errors import register_exception_handlers
 from app.core.logging_config import setup_logging, get_logger
@@ -81,6 +83,7 @@ app.include_router(documents_router)
 app.include_router(teaching_router)
 app.include_router(users_router)
 app.include_router(quiz_router)
+app.include_router(quiz_ai_router)  # 新增：AI出题路由
 app.include_router(mistakes_router)
 
 
@@ -118,6 +121,40 @@ async def health():
         "langgraph": "ready",
         "agents": ["Architect", "Examiner", "Tutor"]
     }
+
+
+@app.get("/api/test")
+async def test_endpoint():
+    """简单的测试端点"""
+    import time
+    start = time.time()
+    return {
+        "message": "API is working!",
+        "timestamp": start,
+        "server": "EduGenius Backend"
+    }
+
+
+@app.get("/api/test-db")
+async def test_db_endpoint():
+    """测试数据库连接"""
+    from app.db.database import get_db
+    from app.models.document import Question
+    from sqlalchemy import select
+
+    async for db in get_db():
+        result = await db.execute(
+            select(Question).where(
+                Question.document_id == 3,
+                Question.chapter_number == 1
+            ).limit(1)
+        )
+        q = result.scalar_one_or_none()
+        return {
+            "db_connected": True,
+            "found_question": q.question_text if q else None
+        }
+    return {"db_connected": False}
 
 
 if __name__ == "__main__":

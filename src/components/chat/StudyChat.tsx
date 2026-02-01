@@ -82,8 +82,8 @@ export function StudyChat({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
-  // 保存对话到数据库
-  const saveConversationToDB = async (userMsg: string, aiMsg: string) => {
+  // 更新学习进度（后端已自动保存对话，前端只需更新进度）
+  const updateLearningProgress = async () => {
     if (!userId) return
 
     try {
@@ -92,40 +92,16 @@ export function StudyChat({
         method: 'POST',
         headers: getAuthHeadersSimple(),
         body: JSON.stringify({
-          document_id: 1, // TODO: 从上下文获取真实 document_id
+          document_id: documentId || 1,
           chapter_number: parseInt(chapterId, 10),
           chapter_title: chapterTitle,
           time_spent_minutes: 1,
           completion_percentage: null // 让后端自动计算
         })
       })
-
-      // 保存用户消息
-      await fetch(getApiUrl(`/api/users/${userId}/save-conversation`), {
-        method: 'POST',
-        headers: getAuthHeadersSimple(),
-        body: JSON.stringify({
-          role: 'user',
-          content: userMsg,
-          chapter_number: parseInt(chapterId, 10),
-          document_id: 1 // TODO: 从上下文获取真实 document_id
-        })
-      })
-
-      // 保存 AI 回复
-      await fetch(getApiUrl(`/api/users/${userId}/save-conversation`), {
-        method: 'POST',
-        headers: getAuthHeadersSimple(),
-        body: JSON.stringify({
-          role: 'assistant',
-          content: aiMsg,
-          chapter_number: parseInt(chapterId, 10),
-          document_id: 1
-        })
-      })
     } catch (error) {
-      console.error('保存对话失败:', error)
-      throw error
+      console.error('更新学习进度失败:', error)
+      // 不影响用户体验
     }
   }
 
@@ -140,9 +116,12 @@ export function StudyChat({
         return
       }
 
+      const historyUrl = getApiUrl(`/api/users/${userId}/history?chapter_number=${chapterId}`)
+      console.log(`[StudyChat] 加载历史记录: ${historyUrl}`)
+
       try {
         const historyResponse = await safeFetch(
-          getApiUrl(`/api/users/${userId}/history?chapter_number=${chapterId}`),
+          historyUrl,
           {
             headers: getAuthHeadersSimple(),
             signal: abortController.signal
@@ -151,6 +130,7 @@ export function StudyChat({
 
         if (historyResponse.ok && isMounted) {
           const historyData = await historyResponse.json()
+          console.log('[StudyChat] 历史记录响应:', historyData)
 
           // 转换历史对话为 Message 格式
           const historyMessages: Message[] = historyData.conversations.map((conv: any) => ({
@@ -205,10 +185,32 @@ export function StudyChat({
           console.log('请求已取消')
           return
         }
-        
+
+        // 尝试序列化错误对象以便查看
+        console.error('原始错误对象:', error)
+        console.error('错误类型:', typeof error)
+        console.error('错误构造函数:', error?.constructor?.name)
+        console.error('错误键:', Object.keys(error || {}))
+
         const apiError = handleApiError(error)
-        console.error('加载历史失败:', apiError)
-        
+
+        // 使用 JSON.stringify 确保能看到完整内容
+        console.error('加载历史失败，错误详情:', JSON.stringify({
+          message: apiError.message,
+          status: apiError.status,
+          code: apiError.code,
+          details: apiError.details
+        }, null, 2))
+
+        // 如果是认证错误，不显示欢迎消息
+        if (apiError.status === 401) {
+          console.warn('用户未登录，跳过历史记录加载')
+          if (isMounted) {
+            setIsLoadingHistory(false)
+          }
+          return
+        }
+
         // 显示默认欢迎消息
         if (isMounted) {
           let welcomeContent = `👋 欢迎来到 **${chapterTitle}**！\n\n`
@@ -344,11 +346,11 @@ export function StudyChat({
         }
         setMessages(prev => [...prev, assistantMessage])
 
-        // 保存对话到数据库
+        // 更新学习进度（对话已由后端自动保存）
         try {
-          await saveConversationToDB(userMessage, fullContent)
-        } catch (saveError) {
-          console.error('保存对话失败:', saveError)
+          await updateLearningProgress()
+        } catch (progressError) {
+          console.error('更新学习进度失败:', progressError)
         }
       } else {
         // 没有收到内容，显示错误消息
@@ -404,71 +406,69 @@ export function StudyChat({
   }
 
   return (
-    <div className={`flex flex-col h-full bg-white ${className}`}>
-      <>
-          {/* 消息列表 */}
-          <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
-            {isLoadingHistory ? (
-              <div className="flex items-center justify-center h-full">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
-                <p className="ml-3 text-sm text-gray-500">正在加载学习历史...</p>
-              </div>
+    <div className={`flex flex-col h-full w-full bg-white ${className}`}>
+      {/* 消息列表 */}
+      <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4 min-h-0">
+        {isLoadingHistory ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
+            <p className="ml-3 text-sm text-gray-500">正在加载学习历史...</p>
+          </div>
+        ) : (
+          <AnimatePresence>
+            {messages.map((message) => (
+              <ChatMessage key={message.id} message={message} />
+            ))}
+          </AnimatePresence>
+        )}
+
+        {/* 流式消息（打字机效果） */}
+        {isStreaming && streamingContent && (
+          <StreamingMessage content={streamingContent} isComplete={false} />
+        )}
+
+        {/* 正在思考指示器 */}
+        {isStreaming && !streamingContent && (
+          <TypingIndicator />
+        )}
+
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* 输入框 */}
+      <div className="border-t border-gray-200 px-6 py-4 bg-white flex-shrink-0">
+        <div className="flex items-end gap-3 max-w-5xl mx-auto">
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="输入你的问题... (Shift+Enter 换行)"
+            className="flex-1 px-4 py-3 bg-white border-2 border-gray-200 rounded-xl resize-none focus:outline-none focus:border-black transition-all text-sm"
+            rows={1}
+            disabled={isStreaming}
+            style={{ minHeight: '48px', maxHeight: '150px' }}
+          />
+
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={handleSend}
+            disabled={isStreaming || !input.trim()}
+            className="px-6 py-3 bg-black text-white rounded-xl hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex-shrink-0 h-12"
+          >
+            {isStreaming ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
             ) : (
-              <AnimatePresence>
-                {messages.map((message) => (
-                  <ChatMessage key={message.id} message={message} />
-                ))}
-              </AnimatePresence>
+              <Send className="w-5 h-5" />
             )}
+          </motion.button>
+        </div>
 
-            {/* 流式消息（打字机效果） */}
-            {isStreaming && streamingContent && (
-              <StreamingMessage content={streamingContent} isComplete={false} />
-            )}
-
-            {/* 正在思考指示器 */}
-            {isStreaming && !streamingContent && (
-              <TypingIndicator />
-            )}
-
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* 输入框 */}
-          <div className="border-t border-gray-200 px-6 py-4 bg-white">
-            <div className="flex items-end gap-3 max-w-5xl mx-auto">
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="输入你的问题... (Shift+Enter 换行)"
-                className="flex-1 px-4 py-3 bg-white border-2 border-gray-200 rounded-xl resize-none focus:outline-none focus:border-black transition-all text-sm"
-                rows={1}
-                disabled={isStreaming}
-                style={{ minHeight: '48px', maxHeight: '150px' }}
-              />
-
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={handleSend}
-                disabled={isStreaming || !input.trim()}
-                className="px-6 py-3 bg-black text-white rounded-xl hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex-shrink-0 h-12"
-              >
-                {isStreaming ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <Send className="w-5 h-5" />
-                )}
-              </motion.button>
-            </div>
-
-            <p className="text-xs text-gray-500 mt-3 text-center max-w-5xl mx-auto">
-              按 Enter 发送，Shift+Enter 换行
-            </p>
-          </div>
-        </>
+        <p className="text-xs text-gray-500 mt-3 text-center max-w-5xl mx-auto">
+          按 Enter 发送，Shift+Enter 换行
+        </p>
+      </div>
     </div>
   )
 }
