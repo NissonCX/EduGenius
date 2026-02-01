@@ -75,6 +75,59 @@ export function StudyChat({
     }
   }, [teachingStyle])
 
+  // 加载历史对话记录
+  useEffect(() => {
+    const loadHistory = async () => {
+      // 如果没有 userId，直接结束加载
+      if (!userId) {
+        setIsLoadingHistory(false)
+        return
+      }
+
+      try {
+        const response = await fetch(
+          getApiUrl(`/api/users/${userId}/history?chapter_number=${chapterId}`),
+          {
+            headers: getAuthHeadersSimple()
+          }
+        )
+
+        if (response.ok) {
+          const data = await response.json()
+          if (data.conversations && data.conversations.length > 0) {
+            // 将历史对话转换为消息格式
+            const historyMessages: Message[] = []
+            data.conversations.forEach((conv: any) => {
+              if (conv.user_message) {
+                historyMessages.push({
+                  id: `hist-${conv.id}-user`,
+                  role: 'user',
+                  content: conv.user_message,
+                  timestamp: new Date(conv.timestamp)
+                })
+              }
+              if (conv.ai_response) {
+                historyMessages.push({
+                  id: `hist-${conv.id}-ai`,
+                  role: 'assistant',
+                  content: conv.ai_response,
+                  timestamp: new Date(conv.timestamp)
+                })
+              }
+            })
+            setMessages(historyMessages)
+          }
+        }
+      } catch (error) {
+        console.error('加载历史对话失败:', error)
+      } finally {
+        setIsLoadingHistory(false)
+      }
+    }
+
+    loadHistory()
+  }, [userId, chapterId])
+
   // 自动滚动
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
