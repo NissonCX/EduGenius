@@ -530,7 +530,7 @@ function StudyPageContent() {
         {/* 左侧：学习进度卡片 */}
         <div className="w-80 border-r border-gray-200 overflow-y-auto hidden lg:block">
           <div className="p-6">
-            {authUser && (
+            {authUser && authUser.id && (
               <ProgressCard
                 userId={authUser.id}
                 documentId={parseInt(docId)}

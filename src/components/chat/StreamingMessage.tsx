@@ -2,7 +2,7 @@
 
 /**
  * StreamingMessage - 流式消息组件
- * 优化的 Markdown 渲染，黑白灰极简设计风格
+ * 使用统一的 LaTeX 处理器，确保与 ChatMessage 一致
  */
 
 import { motion, AnimatePresence } from 'framer-motion'
@@ -11,58 +11,21 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
-import { visit } from 'unist-util-visit'
 import { MermaidInText } from '@/components/visualization/MermaidDiagram'
+import { processLatexInMarkdown } from '@/lib/latex-processor'
 import 'katex/dist/katex.min.css'
 
-/**
- * Remark 插件：将代码块从 p 元素中提取出来
- */
-function remarkUnwrapCodeBlocks() {
-  return (tree: any) => {
-    visit(tree, 'element', (node, index, parent) => {
-      if (
-        node.tagName === 'p' &&
-        node.children &&
-        node.children.length === 1 &&
-        node.children[0].type === 'element' &&
-        node.children[0].tagName === 'pre'
-      ) {
-        if (parent && typeof index === 'number') {
-          parent.children[index] = node.children[0]
-        }
-      }
-    })
+// KaTeX 配置选项
+const katexOptions = {
+  throwOnError: false,
+  errorColor: '#cc0000',
+  strict: false,
+  trust: false,
+  macros: {
+    "\\xrightarrow": "\\xrightarrow",
+    "\\Delta": "\\Delta",
+    "\\text": "\\text"
   }
-}
-
-/**
- * 修复流式传输时不完整的 Markdown 格式
- */
-function fixIncompleteMarkdown(content: string): string {
-  let fixed = content
-
-  // 检查未闭合的代码块
-  const codeBlockCount = (content.match(/```/g) || []).length
-  if (codeBlockCount % 2 !== 0) {
-    if (content.length > 50) {
-      fixed += '\n```'
-    }
-  }
-
-  // 检查未闭合的行内代码
-  const inlineCodeCount = (content.match(/`/g) || []).length
-  if (inlineCodeCount % 2 !== 0) {
-    fixed += '`'
-  }
-
-  // 检查未闭合的数学公式
-  const mathBlockCount = (content.match(/\$\$/g) || []).length
-  if (mathBlockCount % 2 !== 0) {
-    fixed += '$$'
-  }
-
-  return fixed
 }
 
 interface StreamingMessageProps {
@@ -71,15 +34,11 @@ interface StreamingMessageProps {
 }
 
 export function StreamingMessage({ content, isComplete = false }: StreamingMessageProps) {
-  const renderContent = isComplete ? content : fixIncompleteMarkdown(content)
+  // 使用统一的处理函数
+  const renderContent = processLatexInMarkdown(content, !isComplete)
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
-      className="group relative px-4 py-6 hover:bg-gray-50/50 transition-colors"
-    >
+    <div className="group relative px-4 py-6 hover:bg-gray-50/50 transition-colors">
       <div className="max-w-4xl mx-auto">
         <div className="flex gap-4">
           {/* 头像 */}
@@ -88,20 +47,20 @@ export function StreamingMessage({ content, isComplete = false }: StreamingMessa
           </div>
 
           {/* 消息内容 */}
-          <div className="flex-1 space-y-2">
+          <div className="flex-1 min-w-0 space-y-2">
             {/* 名称标签 */}
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-gray-900">AI 导师</span>
               <span className="text-xs text-gray-400">正在输入...</span>
             </div>
 
-            {/* 内容 */}
-            <div className="max-w-4xl">
+            {/* 内容 - 使用固定布局避免抖动 */}
+            <div className="w-full">
               <div className="bg-white rounded-2xl rounded-tl-sm shadow-sm border border-gray-200 overflow-hidden">
-                <div className="p-6 markdown-content">
+                <div className="p-6 markdown-content min-h-[60px]">
                   <ReactMarkdown
-                    remarkPlugins={[remarkGfm, remarkMath, remarkUnwrapCodeBlocks]}
-                    rehypePlugins={[rehypeKatex]}
+                    remarkPlugins={[remarkGfm, remarkMath]}
+                    rehypePlugins={[[rehypeKatex, katexOptions]]}
                     components={{
                       // Mermaid 图表
                       code(props: any) {
@@ -219,6 +178,6 @@ export function StreamingMessage({ content, isComplete = false }: StreamingMessa
           </div>
         </div>
       </div>
-    </motion.div>
+    </div>
   )
 }

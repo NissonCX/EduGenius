@@ -14,7 +14,6 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import { visit } from 'unist-util-visit'
 import { MermaidInText } from '@/components/visualization/MermaidDiagram'
-import { processLatexInMarkdown } from '@/lib/latex-processor'
 import 'katex/dist/katex.min.css'
 
 // KaTeX 配置选项
@@ -102,7 +101,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
 
   // 预处理消息内容，转换 LaTeX 格式
   const processedContent = React.useMemo(
-    () => isUser ? message.content : processLatexInMarkdown(message.content, false),
+    () => isUser ? message.content : preprocessMarkdown(message.content),
     [message.content, isUser]
   )
 

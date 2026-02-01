@@ -288,6 +288,50 @@
     margin: 2em 0;
   }
 
+  /* KaTeX 数学公式样式优化 */
+  .markdown-content .katex {
+    font-size: 1.1em;
+    line-height: 1.5;
+  }
+
+  .markdown-content .katex-display {
+    margin: 1.5em 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.5em 0;
+  }
+
+  .markdown-content .katex-display > .katex {
+    text-align: center;
+    white-space: nowrap;
+  }
+
+  /* 行内公式 */
+  .markdown-content .katex-inline {
+    display: inline-block;
+    vertical-align: middle;
+    margin: 0 0.2em;
+  }
+
+  /* 公式滚动条样式 */
+  .markdown-content .katex-display::-webkit-scrollbar {
+    height: 4px;
+  }
+
+  .markdown-content .katex-display::-webkit-scrollbar-track {
+    background-color: #F3F4F6;
+    border-radius: 2px;
+  }
+
+  .markdown-content .katex-display::-webkit-scrollbar-thumb {
+    background-color: #D1D5DB;
+    border-radius: 2px;
+  }
+
+  .markdown-content .katex-display::-webkit-scrollbar-thumb:hover {
+    background-color: #9CA3AF;
+  }
+
   .prose-content h1,
   .prose-content h2,
   .prose-content h3,

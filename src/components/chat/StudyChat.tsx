@@ -131,6 +131,11 @@ export function StudyChat({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }
 
+  // 监听消息变化，自动滚动
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages, streamingContent])
+
   // 更新学习进度
   const updateLearningProgress = async () => {
     if (!userId) return
@@ -174,7 +179,12 @@ export function StudyChat({
           user_id: userId,
           document_id: documentId,
           subsection_id: subsectionId,
-          subsection_title: subsectionTitle
+          subsection_title: subsectionTitle,
+          // 发送历史记录，让 AI 记住上下文
+          history: messages.map(msg => ({
+            role: msg.role,
+            content: msg.content
+          }))
         })
       })
 
@@ -204,17 +214,24 @@ export function StudyChat({
             const data = line.slice(6).trim()
 
             if (data === '[DONE]') {
-              // 流式完成
+              // 流式完成 - 强制重新渲染
               setStreamingContent('')
+              setIsStreaming(false)
 
               const assistantMessage: Message = {
-                id: Date.now().toString(),
+                id: `${Date.now()}-${Math.random()}`, // 确保唯一 ID
                 role: 'assistant',
                 content: fullContent,
                 timestamp: new Date()
               }
 
-              setMessages(prev => [...prev, assistantMessage])
+              // 使用函数式更新确保状态正确
+              setMessages(prev => {
+                const newMessages = [...prev, assistantMessage]
+                console.log('添加新消息:', assistantMessage.content.substring(0, 100))
+                return newMessages
+              })
+              
               fullContent = ''
               break
             }
@@ -234,6 +251,10 @@ export function StudyChat({
 
         scrollToBottom()
       }
+
+      // 流式完成，确保状态更新
+      setIsStreaming(false)
+      setStreamingContent('')
 
       // 更新进度
       try {
