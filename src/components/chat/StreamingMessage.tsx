@@ -2,7 +2,7 @@
 
 /**
  * StreamingMessage - 流式消息组件
- * 基于 shadcn/ui 风格
+ * 黑白灰极简设计风格
  */
 
 import { motion, AnimatePresence } from 'framer-motion'
@@ -78,12 +78,12 @@ export function StreamingMessage({ content, isComplete = false }: StreamingMessa
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
-      className="group relative px-4 py-6 hover:bg-gray-50/50 transition-colors"
+      className="group relative px-4 py-6 hover:bg-gray-50 transition-colors"
     >
       <div className="max-w-3xl mx-auto">
         <div className="flex gap-4">
           {/* 头像 */}
-          <div className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center ring-2 ring-white shadow-sm bg-gradient-to-br from-blue-500 to-cyan-500">
+          <div className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center ring-2 ring-white shadow-sm bg-gray-900">
             <Bot className="w-5 h-5 text-white" />
           </div>
 
@@ -97,27 +97,9 @@ export function StreamingMessage({ content, isComplete = false }: StreamingMessa
 
             {/* 内容 */}
             <div className="max-w-3xl">
-              <div className="bg-white rounded-2xl rounded-tl-sm shadow-sm border border-gray-200/60">
+              <div className="bg-white rounded-2xl rounded-tl-sm shadow-sm border border-gray-200">
                 <div className="p-5">
-                  <div className="prose prose-slate prose-sm max-w-none
-                              prose-headings:font-bold prose-headings:text-gray-900 prose-headings:scroll-mt-8
-                              prose-h1:text-xl prose-h1:mt-8 prose-h1:mb-4
-                              prose-h2:text-lg prose-h2:mt-6 prose-h2:mb-3
-                              prose-h3:text-base prose-h3:mt-5 prose-h3:mb-3
-                              prose-p:leading-relaxed prose-p:text-gray-700 prose-p:text-[15px] prose-p:mb-4
-                              prose-strong:text-gray-900 prose-strong:font-semibold
-                              prose-em:text-gray-600
-                              prose-a:text-indigo-600 prose-a:no-underline hover:prose-a:underline prose-a:font-medium
-                              prose-code:font-mono prose-code:text-[13px]
-                              prose-code:bg-indigo-50 prose-code:text-indigo-700
-                              prose-pre:bg-gray-900 prose-pre:text-gray-100 prose-pre:p-4 prose-pre:rounded-lg prose-pre:my-4
-                              prose-pre:prose-code:bg-transparent prose-pre:prose-code:text-gray-100 prose-pre:prose-code:p-0
-                              prose-blockquote:not-prose prose-blockquote:border-l-4 prose-blockquote:border-indigo-500 prose-blockquote:bg-indigo-50
-                              prose-ul:my-4 prose-ul:space-y-2
-                              prose-ol:my-4 prose-ol:space-y-2
-                              prose-li:text-gray-700 prose-li:leading-relaxed
-                              prose-li:marker:text-indigo-600
-                              prose-hr:border-gray-200 prose-hr:my-6">
+                  <div className="prose prose-sm max-w-none">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm, remarkMath, remarkUnwrapCodeBlocks]}
                       rehypePlugins={[rehypeKatex]}
@@ -135,7 +117,7 @@ export function StreamingMessage({ content, isComplete = false }: StreamingMessa
                           if (!inline) {
                             return (
                               <div className="my-4">
-                                <div className="bg-gray-900 rounded-lg overflow-hidden shadow-inner">
+                                <div className="bg-gray-900 rounded-lg overflow-hidden shadow-inner border border-gray-800">
                                   <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
                                     <span className="text-xs font-medium text-gray-300 font-mono">
                                       {className?.replace('language-', '') || 'code'}
@@ -143,7 +125,7 @@ export function StreamingMessage({ content, isComplete = false }: StreamingMessa
                                     <span className="text-[10px] text-gray-500">CODE</span>
                                   </div>
                                   <pre className={`${className || ''} p-4 overflow-x-auto`}>
-                                    <code className="text-sm font-mono" {...rest}>
+                                    <code className="text-sm font-mono text-gray-100" {...rest}>
                                       {children}
                                     </code>
                                   </pre>
@@ -154,24 +136,24 @@ export function StreamingMessage({ content, isComplete = false }: StreamingMessa
 
                           // 行内代码
                           return (
-                            <code className="font-mono text-[13px]" {...rest}>
+                            <code className="font-mono text-[13px] bg-gray-100 text-gray-800 px-1.5 py-0.5 rounded" {...rest}>
                               {children}
                             </code>
                           )
                         },
                         // 标题
                         h1: ({ children }) => (
-                          <h1 className="text-xl font-bold mt-6 mb-4 text-gray-900 scroll-mt-8">
+                          <h1 className="text-xl font-bold mt-6 mb-4 text-gray-900">
                             {children}
                           </h1>
                         ),
                         h2: ({ children }) => (
-                          <h2 className="text-lg font-bold mt-5 mb-3 text-gray-900 scroll-mt-8">
+                          <h2 className="text-lg font-bold mt-5 mb-3 text-gray-900">
                             {children}
                           </h2>
                         ),
                         h3: ({ children }) => (
-                          <h3 className="text-base font-semibold mt-4 mb-3 text-gray-800 scroll-mt-8">
+                          <h3 className="text-base font-semibold mt-4 mb-3 text-gray-800">
                             {children}
                           </h3>
                         ),
@@ -188,18 +170,18 @@ export function StreamingMessage({ content, isComplete = false }: StreamingMessa
                         ),
                         li: ({ children }) => (
                           <li className="leading-relaxed text-gray-700 flex items-start gap-2">
-                            <span className="text-indigo-500 mt-1 flex-shrink-0">•</span>
+                            <span className="text-gray-900 mt-1 flex-shrink-0">•</span>
                             <span className="flex-1">{children}</span>
                           </li>
                         ),
                         // 引用块
                         blockquote: ({ children }) => (
-                          <blockquote className="border-l-4 border-indigo-500 bg-indigo-50 py-3 px-4 my-4 text-gray-700 rounded-r-lg">
+                          <blockquote className="border-l-4 border-gray-300 bg-gray-50 py-3 px-4 my-4 text-gray-700 rounded-r-lg">
                             {children}
                           </blockquote>
                         ),
                         // 段落
-                        p: ({ children }) => <p className="mb-4 leading-7 text-[15px]">{children}</p>,
+                        p: ({ children }) => <p className="mb-4 leading-7 text-[15px] text-gray-700">{children}</p>,
                         strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
                         em: ({ children }) => <em className="italic text-gray-600">{children}</em>,
                       }}
@@ -223,7 +205,7 @@ export function StreamingMessage({ content, isComplete = false }: StreamingMessa
                     repeat: Infinity,
                     ease: "easeInOut"
                   }}
-                  className="inline-block w-0.5 h-4 bg-indigo-500 ml-1"
+                  className="inline-block w-0.5 h-4 bg-gray-900 ml-1"
                 />
               )}
             </AnimatePresence>

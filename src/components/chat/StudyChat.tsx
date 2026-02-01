@@ -298,14 +298,14 @@ export function StudyChat({
         {isLoadingHistory ? (
           <div className="flex items-center justify-center h-full min-h-[400px]">
             <div className="flex flex-col items-center gap-4">
-              <div className="animate-spin rounded-full h-10 w-10 border-3 border-gray-300 border-t-indigo-600"></div>
+              <div className="animate-spin rounded-full h-10 w-10 border-3 border-gray-300 border-t-black"></div>
               <p className="text-sm text-gray-600 font-medium">加载学习历史中...</p>
             </div>
           </div>
         ) : messages.length === 0 ? (
           <div className="flex items-center justify-center h-full min-h-[400px] px-4">
             <div className="text-center max-w-md">
-              <div className="inline-flex items-center justify-center w-16 h-16 bg-indigo-100 rounded-full mb-4">
+              <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
                 <span className="text-3xl">💬</span>
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">
@@ -352,7 +352,7 @@ export function StudyChat({
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="输入你的问题... (Shift+Enter 换行)"
-                className="w-full px-4 py-3 pr-12 bg-gray-50 border-2 border-gray-200 rounded-xl resize-none focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 transition-all text-sm placeholder:text-gray-400"
+                className="w-full px-4 py-3 pr-12 bg-gray-50 border-2 border-gray-200 rounded-xl resize-none focus:outline-none focus:border-black focus:ring-4 focus:ring-gray-200 transition-all text-sm placeholder:text-gray-400"
                 rows={1}
                 disabled={isStreaming}
                 style={{ minHeight: '52px', maxHeight: '160px' }}
@@ -367,7 +367,7 @@ export function StudyChat({
               whileTap={{ scale: 0.98 }}
               onClick={handleSend}
               disabled={isStreaming || !input.trim()}
-              className="px-5 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl hover:from-indigo-600 hover:to-purple-700 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed transition-all duration-200 shadow-sm hover:shadow-md flex-shrink-0 h-[52px] flex items-center justify-center gap-2 font-medium text-sm"
+              className="px-5 py-3 bg-black text-white rounded-xl hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all duration-200 shadow-sm hover:shadow-md flex-shrink-0 h-[52px] flex items-center justify-center gap-2 font-medium text-sm"
             >
               {isStreaming ? (
                 <Loader2 className="w-5 h-5 animate-spin" />

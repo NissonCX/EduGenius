@@ -2,7 +2,7 @@
 
 /**
  * ChatMessage - 聊天气泡组件
- * 基于 shadcn/ui 风格的现代化设计
+ * 黑白灰极简设计风格
  */
 
 import React from 'react'
@@ -64,13 +64,13 @@ export function ChatMessage({ message }: ChatMessageProps) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
       transition={{ duration: 0.2 }}
-      className="group relative px-4 py-6 hover:bg-gray-50/50 transition-colors"
+      className="group relative px-4 py-6 hover:bg-gray-50 transition-colors"
     >
       <div className="max-w-3xl mx-auto">
         <div className={`flex gap-4 ${isUser ? 'flex-row-reverse' : ''}`}>
           {/* 头像 */}
           <div className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center ring-2 ring-white shadow-sm ${
-            isUser ? 'bg-gradient-to-br from-indigo-500 to-purple-600' : 'bg-gradient-to-br from-blue-500 to-cyan-500'
+            isUser ? 'bg-black' : 'bg-gray-900'
           }`}>
             {isUser ? (
               <User className="w-5 h-5 text-white" />
@@ -102,35 +102,16 @@ export function ChatMessage({ message }: ChatMessageProps) {
             }`}>
               {/* 用户消息 */}
               {isUser ? (
-                <div className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-2xl rounded-tr-sm px-4 py-3 shadow-sm">
+                <div className="bg-black text-white rounded-2xl rounded-tr-sm px-4 py-3 shadow-sm">
                   <p className="text-sm leading-relaxed whitespace-pre-wrap">
                     {message.content}
                   </p>
                 </div>
               ) : (
                 /* AI消息 - 优化的 Markdown 渲染 */
-                <div className="bg-white rounded-2xl rounded-tl-sm shadow-sm border border-gray-200/60 hover:shadow-md transition-shadow">
+                <div className="bg-white rounded-2xl rounded-tl-sm shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
                   <div className="p-5">
-                    <div className="prose prose-slate prose-sm max-w-none
-                                prose-headings:font-bold prose-headings:text-gray-900 prose-headings:scroll-mt-8 prose-headings:scroll-mb-8
-                                prose-h1:text-xl prose-h1:mt-8 prose-h1:mb-4
-                                prose-h2:text-lg prose-h2:mt-6 prose-h2:mb-3
-                                prose-h3:text-base prose-h3:mt-5 prose-h3:mb-3
-                                prose-p:leading-relaxed prose-p:text-gray-700 prose-p:text-[15px]
-                                prose-p:mb-4
-                                prose-strong:text-gray-900 prose-strong:font-semibold
-                                prose-em:text-gray-600
-                                prose-a:text-indigo-600 prose-a:no-underline hover:prose-a:underline prose-a:font-medium
-                                prose-code:font-mono prose-code:text-[13px]
-                                prose-code:bg-indigo-50 prose-code:text-indigo-700 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded
-                                prose-pre:bg-gray-900 prose-pre:text-gray-100 prose-pre:p-4 prose-pre:rounded-lg prose-pre:my-4
-                                prose-pre:prose-code:bg-transparent prose-pre:prose-code:text-gray-100 prose-pre:prose-code:p-0
-                                prose-blockquote:not-prose prose-blockquote:border-l-4 prose-blockquote:border-indigo-500 prose-blockquote:bg-indigo-50 prose-blockquote:py-3 prose-blockquote:px-4 prose-blockquote:my-4 prose-blockquote:text-gray-700
-                                prose-ul:my-4 prose-ul:space-y-2
-                                prose-ol:my-4 prose-ol:space-y-2
-                                prose-li:text-gray-700 prose-li:leading-relaxed
-                                prose-li:marker:text-indigo-600
-                                prose-hr:border-gray-200 prose-hr:my-6">
+                    <div className="prose prose-sm max-w-none">
                       <ReactMarkdown
                         remarkPlugins={[remarkGfm, remarkMath, remarkUnwrapCodeBlocks]}
                         rehypePlugins={[rehypeKatex]}
@@ -148,27 +129,27 @@ export function ChatMessage({ message }: ChatMessageProps) {
                             if (!inline) {
                               return (
                                 <div className="group relative my-4">
-                                  <div className="absolute -top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <div className="absolute -top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                                     <button
                                       onClick={() => {
                                         const codeText = String(children).replace(/\n$/, '')
                                         navigator.clipboard.writeText(codeText)
                                       }}
-                                      className="p-1.5 bg-gray-700 hover:bg-gray-600 rounded-md text-gray-300 hover:text-white transition-colors"
+                                      className="p-1.5 bg-gray-800 hover:bg-gray-700 rounded-md text-gray-200 hover:text-white transition-colors shadow-sm"
                                       title="复制代码"
                                     >
                                       <Copy className="w-4 h-4" />
                                     </button>
                                   </div>
-                                  <div className="bg-gray-900 rounded-lg overflow-hidden shadow-inner">
-                                    <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
+                                  <div className="bg-gray-900 rounded-lg overflow-hidden shadow-lg border border-gray-800">
+                                    <div className="flex items-center justify-between px-4 py-2 bg-gray-800/90 border-b border-gray-700">
                                       <span className="text-xs font-medium text-gray-300 font-mono">
                                         {className?.replace('language-', '') || 'code'}
                                       </span>
                                       <span className="text-[10px] text-gray-500">CODE</span>
                                     </div>
                                     <pre className={`${className || ''} p-4 overflow-x-auto`}>
-                                      <code className="text-sm font-mono" {...rest}>
+                                      <code className="text-sm font-mono text-gray-100" {...rest}>
                                         {children}
                                       </code>
                                     </pre>
@@ -179,7 +160,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
 
                             // 行内代码
                             return (
-                              <code className="font-mono text-[13px]" {...rest}>
+                              <code className="font-mono text-[13px] bg-gray-100 text-gray-800 px-1.5 py-0.5 rounded" {...rest}>
                                 {children}
                               </code>
                             )
@@ -196,7 +177,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
                             </h2>
                           ),
                           h3: ({ children }) => (
-                            <h3 className="text-base font-semibold mt-4 mb-3 text-gray-900 scroll-mt-8">
+                            <h3 className="text-base font-semibold mt-4 mb-3 text-gray-800 scroll-mt-8">
                               {children}
                             </h3>
                           ),
@@ -213,13 +194,13 @@ export function ChatMessage({ message }: ChatMessageProps) {
                           ),
                           li: ({ children }) => (
                             <li className="leading-relaxed text-gray-700 flex items-start gap-2">
-                              <span className="text-indigo-500 mt-1 flex-shrink-0">•</span>
+                              <span className="text-gray-900 mt-1 flex-shrink-0">•</span>
                               <span className="flex-1">{children}</span>
                             </li>
                           ),
                           // 引用块
                           blockquote: ({ children }) => (
-                            <blockquote className="border-l-4 border-indigo-500 bg-indigo-50 py-3 px-4 my-4 text-gray-700 rounded-r-lg">
+                            <blockquote className="border-l-4 border-gray-300 bg-gray-50 py-3 px-4 my-4 text-gray-700 rounded-r-lg">
                               {children}
                             </blockquote>
                           ),
@@ -256,6 +237,10 @@ export function ChatMessage({ message }: ChatMessageProps) {
                               {children}
                             </td>
                           ),
+                          // 段落
+                          p: ({ children }) => <p className="mb-4 leading-7 text-[15px] text-gray-700">{children}</p>,
+                          strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
+                          em: ({ children }) => <em className="italic text-gray-600">{children}</em>,
                         }}
                       >
                         {message.content}
@@ -264,7 +249,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
                   </div>
 
                   {/* AI 操作按钮 */}
-                  <div className="flex items-center justify-between px-5 py-3 bg-gray-50 border-t border-gray-200/60 rounded-b-2xl">
+                  <div className="flex items-center justify-between px-5 py-3 bg-gray-50 border-t border-gray-200 rounded-b-2xl">
                     <div className="flex items-center gap-2">
                       <button
                         onClick={handleCopy}
@@ -272,7 +257,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
                       >
                         {copied ? (
                           <>
-                            <Check className="w-3.5 h-3.5 text-green-600" />
+                            <Check className="w-3.5 h-3.5 text-gray-600" />
                             <span>已复制</span>
                           </>
                         ) : (
