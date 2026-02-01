@@ -99,175 +99,121 @@ export function StreamingMessage({ content, isComplete = false }: StreamingMessa
             <div className="max-w-4xl">
               <div className="bg-white rounded-2xl rounded-tl-sm shadow-sm border border-gray-200 overflow-hidden">
                 <div className="p-6">
-                  <div className="prose-content max-w-none">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm, remarkMath, remarkUnwrapCodeBlocks]}
-                      rehypePlugins={[rehypeKatex]}
-                      components={{
-                        // Mermaid 图表
-                        code(props: any) {
-                          const { node, inline, className, children, ...rest } = props
-                          const match = /language-mermaid/.exec(className || '')
-                          if (!inline && match) {
-                            const code = String(children).replace(/\n$/, '')
-                            return <MermaidInText text={`\`\`\`mermaid\n${code}\n\`\`\``} />
-                          }
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm, remarkMath, remarkUnwrapCodeBlocks]}
+                    rehypePlugins={[rehypeKatex]}
+                    className="prose prose-sm max-w-none
+                      prose-headings:font-bold prose-headings:text-gray-900 prose-headings:mt-6 prose-headings:mb-3
+                      prose-h1:text-2xl prose-h1:font-bold
+                      prose-h2:text-xl prose-h2:font-bold
+                      prose-h3:text-lg prose-h3:font-semibold
+                      prose-h4:text-base prose-h4:font-semibold
+                      prose-p:leading-7 prose-p:text-gray-700 prose-p:text-[15px] prose-p:mb-4
+                      prose-strong:text-gray-900 prose-strong:font-semibold
+                      prose-em:text-gray-600
+                      prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline prose-a:font-medium
+                      prose-code:font-mono prose-code:text-[13px] prose-code:bg-gray-100 prose-code:text-gray-800 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded
+                      prose-pre:bg-gray-900 prose-pre:text-gray-100 prose-pre:p-4 prose-pre:rounded-lg prose-pre:my-4
+                      prose-pre:prose-code:bg-transparent prose-pre:prose-code:text-gray-100 prose-pre:prose-code:p-0
+                      prose-blockquote:border-l-4 prose-blockquote:border-gray-300 prose-blockquote:bg-gray-50 prose-blockquote:py-3 prose-blockquote:px-4 prose-blockquote:my-4 prose-blockquote:text-gray-700 prose-blockquote:italic
+                      prose-ul:my-4 prose-ul:space-y-2 prose-ul:pl-4
+                      prose-ol:my-4 prose-ol:space-y-2 prose-ol:pl-4
+                      prose-li:text-gray-700 prose-li:leading-relaxed
+                      prose-hr:border-gray-200 prose-hr:my-6"
+                    components={{
+                      // Mermaid 图表
+                      code(props: any) {
+                        const { node, inline, className, children, ...rest } = props
+                        const match = /language-mermaid/.exec(className || '')
+                        if (!inline && match) {
+                          const code = String(children).replace(/\n$/, '')
+                          return <MermaidInText text={`\`\`\`mermaid\n${code}\n\`\`\``} />
+                        }
 
-                          // 代码块
-                          if (!inline) {
-                            return (
-                              <div className="my-5">
-                                <div className="bg-gray-900 rounded-xl overflow-hidden shadow-lg border border-gray-800">
-                                  <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
-                                    <span className="text-xs font-medium text-gray-300 font-mono">
-                                      {className?.replace('language-', '') || 'code'}
-                                    </span>
-                                    <span className="text-[10px] text-gray-500 uppercase tracking-wide">Code</span>
-                                  </div>
-                                  <pre className="p-5 overflow-x-auto">
-                                    <code
-                                      className={`text-sm font-mono text-gray-100 ${className || ''}`}
-                                      {...rest}
-                                    >
-                                      {children}
-                                    </code>
-                                  </pre>
-                                </div>
-                              </div>
-                            )
-                          }
-
-                          // 行内代码
+                        // 代码块
+                        if (!inline) {
                           return (
-                            <code
-                              className="font-mono text-[13px] bg-gray-100 text-gray-800 px-1.5 py-0.5 rounded-md"
-                              {...rest}
-                            >
-                              {children}
-                            </code>
+                            <div className="my-5">
+                              <div className="bg-gray-900 rounded-xl overflow-hidden shadow-lg border border-gray-800">
+                                <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
+                                  <span className="text-xs font-medium text-gray-300 font-mono">
+                                    {className?.replace('language-', '') || 'code'}
+                                  </span>
+                                  <span className="text-[10px] text-gray-500 uppercase tracking-wide">Code</span>
+                                </div>
+                                <pre className="p-5 overflow-x-auto">
+                                  <code
+                                    className={`text-sm font-mono text-gray-100 ${className || ''}`}
+                                    {...rest}
+                                  >
+                                    {children}
+                                  </code>
+                                </pre>
+                              </div>
+                            </div>
                           )
-                        },
+                        }
 
-                        // 标题
-                        h1: ({ children }) => (
-                          <h1 className="text-2xl font-bold mt-8 mb-4 text-gray-900 leading-tight">
-                            {children}
-                          </h1>
-                        ),
-                        h2: ({ children }) => (
-                          <h2 className="text-xl font-bold mt-6 mb-3 text-gray-900 leading-tight">
-                            {children}
-                          </h2>
-                        ),
-                        h3: ({ children }) => (
-                          <h3 className="text-lg font-semibold mt-5 mb-3 text-gray-800 leading-tight">
-                            {children}
-                          </h3>
-                        ),
-                        h4: ({ children }) => (
-                          <h4 className="text-base font-semibold mt-4 mb-2 text-gray-800 leading-tight">
-                            {children}
-                          </h4>
-                        ),
-
-                        // 段落
-                        p: ({ children }) => (
-                          <p className="mb-4 leading-7 text-[15px] text-gray-700">
-                            {children}
-                          </p>
-                        ),
-
-                        // 文本样式
-                        strong: ({ children }) => (
-                          <strong className="font-semibold text-gray-900">
-                            {children}
-                          </strong>
-                        ),
-                        em: ({ children }) => (
-                          <em className="italic text-gray-600">
-                            {children}
-                          </em>
-                        ),
-
-                        // 列表
-                        ul: ({ children }) => (
-                          <ul className="my-4 space-y-2 pl-4">
-                            {children}
-                          </ul>
-                        ),
-                        ol: ({ children }) => (
-                          <ol className="my-4 space-y-2 pl-4 list-decimal">
-                            {children}
-                          </ol>
-                        ),
-                        li: ({ children }) => (
-                          <li className="leading-relaxed text-gray-700 pl-2">
-                            {children}
-                          </li>
-                        ),
-
-                        // 引用块
-                        blockquote: ({ children }) => (
-                          <blockquote className="border-l-4 border-gray-300 bg-gray-50 py-4 px-5 my-5 text-gray-700 rounded-r-lg italic">
-                            {children}
-                          </blockquote>
-                        ),
-
-                        // 表格
-                        table: ({ children }) => (
-                          <div className="my-5 overflow-x-auto rounded-xl border border-gray-200">
-                            <table className="min-w-full divide-y divide-gray-200">
-                              {children}
-                            </table>
-                          </div>
-                        ),
-                        thead: ({ children }) => (
-                          <thead className="bg-gray-50">
-                            {children}
-                          </thead>
-                        ),
-                        tbody: ({ children }) => (
-                          <tbody className="bg-white divide-y divide-gray-100">
-                            {children}
-                          </tbody>
-                        ),
-                        tr: ({ children }) => (
-                          <tr className="hover:bg-gray-50/80 transition-colors">
-                            {children}
-                          </tr>
-                        ),
-                        th: ({ children }) => (
-                          <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                            {children}
-                          </th>
-                        ),
-                        td: ({ children }) => (
-                          <td className="px-4 py-3 text-sm text-gray-700">
-                            {children}
-                          </td>
-                        ),
-
-                        // 分隔线
-                        hr: () => (
-                          <hr className="my-8 border-t border-gray-200" />
-                        ),
-
-                        // 链接
-                        a: ({ children, href }) => (
-                          <a
-                            href={href}
-                            className="text-blue-600 hover:text-blue-700 hover:underline font-medium transition-colors"
-                            target="_blank"
-                            rel="noopener noreferrer"
+                        // 行内代码
+                        return (
+                          <code
+                            className="font-mono text-[13px] bg-gray-100 text-gray-800 px-1.5 py-0.5 rounded-md"
+                            {...rest}
                           >
                             {children}
-                          </a>
-                        ),
-                      }}
-                    >
-                      {renderContent}
-                    </ReactMarkdown>
-                  </div>
+                          </code>
+                        )
+                      },
+
+                      // 表格
+                      table: ({ children }) => (
+                        <div className="my-5 overflow-x-auto rounded-xl border border-gray-200">
+                          <table className="min-w-full divide-y divide-gray-200">
+                            {children}
+                          </table>
+                        </div>
+                      ),
+                      thead: ({ children }) => (
+                        <thead className="bg-gray-50">
+                          {children}
+                        </thead>
+                      ),
+                      tbody: ({ children }) => (
+                        <tbody className="bg-white divide-y divide-gray-100">
+                          {children}
+                        </tbody>
+                      ),
+                      tr: ({ children }) => (
+                        <tr className="hover:bg-gray-50/80 transition-colors">
+                          {children}
+                        </tr>
+                      ),
+                      th: ({ children }) => (
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                          {children}
+                        </th>
+                      ),
+                      td: ({ children }) => (
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          {children}
+                        </td>
+                      ),
+
+                      // 链接
+                      a: ({ children, href }) => (
+                        <a
+                          href={href}
+                          className="text-blue-600 hover:text-blue-700 hover:underline font-medium transition-colors"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {children}
+                        </a>
+                      ),
+                    }}
+                  >
+                    {renderContent}
+                  </ReactMarkdown>
                 </div>
               </div>
             </div>

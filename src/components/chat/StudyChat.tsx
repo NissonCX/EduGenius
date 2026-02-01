@@ -94,29 +94,27 @@ export function StudyChat({
 
         if (response.ok) {
           const data = await response.json()
+          console.log('历史对话数据:', data) // 调试日志
+
           if (data.conversations && data.conversations.length > 0) {
             // 将历史对话转换为消息格式
             const historyMessages: Message[] = []
             data.conversations.forEach((conv: any) => {
-              if (conv.user_message) {
-                historyMessages.push({
-                  id: `hist-${conv.id}-user`,
-                  role: 'user',
-                  content: conv.user_message,
-                  timestamp: new Date(conv.timestamp)
-                })
-              }
-              if (conv.ai_response) {
-                historyMessages.push({
-                  id: `hist-${conv.id}-ai`,
-                  role: 'assistant',
-                  content: conv.ai_response,
-                  timestamp: new Date(conv.timestamp)
-                })
-              }
+              // 后端返回的数据格式是 role 和 content
+              historyMessages.push({
+                id: `hist-${conv.id}`,
+                role: conv.role === 'user' ? 'user' : 'assistant',
+                content: conv.content,
+                timestamp: new Date(conv.created_at || Date.now())
+              })
             })
+            console.log('转换后的消息:', historyMessages) // 调试日志
             setMessages(historyMessages)
+          } else {
+            console.log('没有找到历史对话')
           }
+        } else {
+          console.error('获取历史对话失败:', response.status)
         }
       } catch (error) {
         console.error('加载历史对话失败:', error)
