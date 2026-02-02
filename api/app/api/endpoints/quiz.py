@@ -108,10 +108,19 @@ async def generate_questions(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    AI 自动生成题目（简化版，直接返回示例题目）
+    AI 自动生成题目（集成真实的 AI 生成逻辑）
 
-    TODO: 集成真实的 AI 生成逻辑
+    使用 Examiner Agent 生成题目，支持：
+    - 多种题型（选择题、填空题、简答题）
+    - 可定制难度和数量
+    - 六维能力评估
     """
+    from app.agents.nodes.examiner import ExaminerAgent
+    from app.core.config import settings
+    from app.core.logging_config import get_logger
+
+    logger = get_logger(__name__)
+
     # 验证文档和章节是否存在
     document_result = await db.execute(
         select(Document).where(Document.id == request.document_id)
@@ -124,32 +133,155 @@ async def generate_questions(
             detail="文档不存在"
         )
 
-    questions = []
+    try:
+        # 获取章节内容
+        chapter_content = await _get_chapter_content_for_generation(
+            request.document_id,
+            request.chapter_number,
+            db
+        )
 
-    # 生成示例题目（实际应该调用 AI 生成）
+        # 创建 Examiner Agent
+        examiner = ExaminerAgent(
+            api_key=settings.DASHSCOPE_API_KEY,
+            model=getattr(settings, 'MODEL_NAME', 'qwen-max')
+        )
+
+        # 调用 AI 生成题目
+        logger.info(f"调用AI生成题目: document={request.document_id}, chapter={request.chapter_number}")
+        questions_data = await examiner.generate_questions(
+            state={
+                "document_id": request.document_id,
+                "current_chapter": request.chapter_number,
+                "chapter_content": chapter_content,
+                "learning_objectives": [],
+                "wrong_questions": []
+            },
+            count=request.count,
+            difficulty=request.difficulty,
+            student_level=current_user.cognitive_level
+        )
+
+        # 验证并保存题目
+        saved_questions = []
+        for q_data in questions_data:
+            # 检查是否重复
+            existing = await db.execute(
+                select(Question).where(
+                    Question.question_text == q_data.get('question_text', '')
+                )
+            )
+            if existing.scalar_one_or_none():
+                logger.warning(f"跳过重复题目: {q_data.get('question_text', '')[:30]}...")
+                continue
+
+            # 创建新题目
+            question = Question(
+                document_id=request.document_id,
+                chapter_number=request.chapter_number,
+                question_type=q_data.get('question_type', request.question_type),
+                question_text=q_data.get('question_text', ''),
+                options=json.dumps(q_data.get('options', {})) if q_data.get('options') else None,
+                correct_answer=q_data.get('correct_answer', ''),
+                explanation=q_data.get('explanation', ''),
+                difficulty=q_data.get('difficulty', request.difficulty),
+                competency_dimension=q_data.get('competency_dimension', 'comprehension'),
+                created_by='AI'
+            )
+
+            db.add(question)
+            saved_questions.append(question)
+
+        await db.commit()
+
+        # 刷新以获取 ID
+        for q in saved_questions:
+            await db.refresh(q)
+
+        logger.info(f"成功生成并保存 {len(saved_questions)} 道题目")
+        return saved_questions
+
+    except Exception as e:
+        logger.error(f"AI生成题目失败: {e}", exc_info=True)
+        # 降级：返回示例题目作为备选方案
+        logger.warning("降级到示例题目生成")
+        return await _generate_fallback_questions(request, db)
+
+
+async def _get_chapter_content_for_generation(
+    document_id: int,
+    chapter_number: int,
+    db: AsyncSession
+) -> str:
+    """获取章节内容用于生成题目"""
+    # 尝试从文档的章节JSON中获取
+    document_result = await db.execute(
+        select(Document).where(Document.id == document_id)
+    )
+    document = document_result.scalar_one_or_none()
+
+    if not document:
+        return f"第{chapter_number}章"
+
+    # 如果有章节JSON，尝试提取对应章节的内容
+    if document.chapters_json:
+        try:
+            import json as json_module
+            chapters = json_module.loads(document.chapters_json)
+            for chapter in chapters:
+                if chapter.get('chapter_number') == chapter_number:
+                    # 返回章节标题和部分内容
+                    content = chapter.get('content', '')
+                    title = chapter.get('title', '')
+                    return f"{title}\n\n{content[:2000]}"  # 限制内容长度
+        except Exception as e:
+            from app.core.logging_config import get_logger
+            logger = get_logger(__name__)
+            logger.warning(f"解析章节JSON失败: {e}")
+
+    # 降级：从对话历史中获取相关内容
+    from app.models.document import ConversationHistory
+
+    history_result = await db.execute(
+        select(ConversationHistory)
+        .where(
+            ConversationHistory.document_id == document_id,
+            ConversationHistory.chapter_number == chapter_number
+        )
+        .order_by(ConversationHistory.created_at.desc())
+        .limit(10)
+    )
+    conversations = history_result.scalars().all()
+
+    if conversations:
+        # 拼接最近的对话内容
+        content_parts = [conv.content for conv in conversations if conv.role == 'assistant']
+        return f"第{chapter_number}章内容摘要\n\n" + "\n".join(content_parts[:5])
+
+    return f"第{chapter_number}章内容，来自文档：{document.title}"
+
+
+async def _generate_fallback_questions(request: QuestionGenerate, db: AsyncSession) -> List[Question]:
+    """降级方案：生成示例题目"""
+    questions = []
     for i in range(request.count):
         question = Question(
             document_id=request.document_id,
             chapter_number=request.chapter_number,
             question_type=request.question_type,
-            question_text=f"示例题目 {i+1}：关于第{request.chapter_number}章的内容",
+            question_text=f"第{request.chapter_number}章示例题目 {i+1}",
             options=json.dumps({"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}) if request.question_type == "choice" else None,
             correct_answer="A" if request.question_type == "choice" else "示例答案",
             explanation=f"这是题目 {i+1} 的解析",
             difficulty=request.difficulty,
             competency_dimension=classify_question_dimension(f"示例题目 {i+1}"),
-            created_by="AI"
+            created_by="AI_Fallback"
         )
-
         db.add(question)
         questions.append(question)
-
     await db.commit()
-
-    # 刷新以获取 ID
     for q in questions:
         await db.refresh(q)
-
     return questions
 
 
@@ -157,21 +289,31 @@ async def generate_questions(
 async def get_chapter_questions(
     document_id: int,
     chapter_number: int,
+    subsection_number: Optional[str] = None,
     question_type: Optional[str] = None,
     current_user: Optional[User] = Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    获取指定章节的题目列表（简化版，快速响应）
+    获取指定章节（或小节）的题目列表
+
+    支持的查询参数：
+    - subsection_number: 小节编号（如 "1.1"），不传则返回整个章节的题目
+    - question_type: 题目类型（如 "choice"）
     """
     try:
-        query = select(Question).where(
-            and_(
-                Question.document_id == document_id,
-                Question.chapter_number == chapter_number,
-                Question.is_active == 1
-            )
-        )
+        # 构建查询条件
+        conditions = [
+            Question.document_id == document_id,
+            Question.chapter_number == chapter_number,
+            Question.is_active == 1
+        ]
+
+        # 如果指定了小节，添加小节筛选条件
+        if subsection_number:
+            conditions.append(Question.subsection_number == subsection_number)
+
+        query = select(Question).where(and_(*conditions))
 
         if question_type:
             query = query.where(Question.question_type == question_type)

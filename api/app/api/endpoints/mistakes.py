@@ -330,29 +330,42 @@ async def create_practice_session(
     # 构建查询
     query = await get_mistake_query(current_user.id, None, db)
 
-    # 应用筛选条件
-    if config.dimension:
-        query = query.where(Question.competency_dimension == config.dimension)
-
-    if config.chapter_number:
-        query = query.where(Progress.chapter_number == config.chapter_number)
-
-    if config.difficulty:
-        query = query.where(Question.difficulty == config.difficulty)
-
-    # 获取所有符合条件的错题
-    result = await db.execute(query)
-    all_mistakes = result.all()
-
-    if len(all_mistakes) == 0:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="没有找到符合条件的错题，请先完成一些练习"
+    # 如果指定了题目ID列表，直接使用
+    if config.question_ids:
+        result = await db.execute(
+            query.where(Question.id.in_(config.question_ids))
         )
+        selected_mistakes = result.all()
 
-    # 随机抽取题目（避免重复）
-    import random
-    selected_mistakes = random.sample(list(all_mistakes), min(config.count, len(all_mistakes)))
+        if len(selected_mistakes) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="指定的题目未找到或不属于错题"
+            )
+    else:
+        # 应用筛选条件
+        if config.dimension:
+            query = query.where(Question.competency_dimension == config.dimension)
+
+        if config.chapter_number:
+            query = query.where(Progress.chapter_number == config.chapter_number)
+
+        if config.difficulty:
+            query = query.where(Question.difficulty == config.difficulty)
+
+        # 获取所有符合条件的错题
+        result = await db.execute(query)
+        all_mistakes = result.all()
+
+        if len(all_mistakes) == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="没有找到符合条件的错题，请先完成一些练习"
+            )
+
+        # 随机抽取题目（避免重复）
+        import random
+        selected_mistakes = random.sample(list(all_mistakes), min(config.count, len(all_mistakes)))
 
     # 去重（同一题目只取一次）
     seen_questions = set()

@@ -23,8 +23,10 @@ router = APIRouter(prefix="/api/quiz", tags=["quiz"])
 
 async def get_chapter_content(document_id: int, chapter_number: int, db: AsyncSession) -> str:
     """获取章节内容用于出题"""
-    # 从 ConversationHistory 或 Document 中获取章节内容
-    # 简化版：返回章节标题作为内容来源
+    from app.models.document import ConversationHistory
+    import json
+
+    # 获取文档
     result = await db.execute(
         select(Document).where(Document.id == document_id)
     )
@@ -36,8 +38,57 @@ async def get_chapter_content(document_id: int, chapter_number: int, db: AsyncSe
             detail=f"文档 {document_id} 不存在"
         )
 
-    # 返回章节标题作为内容基础
-    # TODO: 实际应该从章节解析的内容中获取
+    # 优先从文档的章节JSON中获取内容
+    if doc.chapters_json:
+        try:
+            chapters = json.loads(doc.chapters_json)
+            for chapter in chapters:
+                if chapter.get('chapter_number') == chapter_number:
+                    title = chapter.get('title', '')
+                    content = chapter.get('content', '')
+                    subsections = chapter.get('subsections', [])
+
+                    # 构建完整内容
+                    chapter_text = f"第{chapter_number}章：{title}\n\n"
+                    chapter_text += content[:3000]  # 限制内容长度，避免超过token限制
+
+                    if subsections:
+                        chapter_text += "\n\n小节目录：\n"
+                        for sub in subsections[:5]:  # 最多5个小节
+                            chapter_text += f"- {sub.get('title', '')}\n"
+
+                    logger.info(f"从文档章节JSON中获取内容: {title}")
+                    return chapter_text
+        except Exception as e:
+            logger.warning(f"解析章节JSON失败: {e}")
+
+    # 备选方案：从对话历史中获取AI讲解内容
+    history_result = await db.execute(
+        select(ConversationHistory)
+        .where(
+            ConversationHistory.document_id == document_id,
+            ConversationHistory.chapter_number == chapter_number,
+            ConversationHistory.role == 'assistant'  # 只获取AI的回复
+        )
+        .order_by(ConversationHistory.created_at.desc())
+        .limit(5)
+    )
+    conversations = history_result.scalars().all()
+
+    if conversations:
+        content_parts = []
+        for conv in conversations:
+            if conv.content:
+                content_parts.append(conv.content)
+
+        if content_parts:
+            chapter_text = f"第{chapter_number}章 内容摘要（来自对话历史）\n\n"
+            chapter_text += "\n\n".join(content_parts)
+            logger.info(f"从对话历史中获取内容: {len(content_parts)} 条对话")
+            return chapter_text[:4000]  # 限制长度
+
+    # 最终降级方案：返回章节标题
+    logger.warning(f"无法获取章节内容，使用降级方案: 第{chapter_number}章")
     return f"第{chapter_number}章内容，来自文档：{doc.title}"
 
 

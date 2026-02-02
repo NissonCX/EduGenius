@@ -75,6 +75,7 @@ class PracticeConfig(BaseModel):
     dimension: Optional[str] = Field(None, description="针对性练习的维度")
     chapter_number: Optional[int] = Field(None, description="针对性练习的章节")
     difficulty: Optional[int] = Field(None, description="针对性练习的难度")
+    question_ids: Optional[List[int]] = Field(None, description="指定练习的题目ID列表")
     count: int = Field(default=10, ge=1, le=20, description="练习题目数量")
     include_mastered: bool = Field(default=False, description="是否包含已掌握的题目")
 

@@ -113,14 +113,98 @@ export default function MistakesPage() {
     }
   }
 
-  const handlePractice = (questionId: number) => {
-    // TODO: 实现专项练习模式
-    console.log('开始练习题目:', questionId)
+  const handlePractice = async (questionId: number) => {
+    // 创建单题练习会话
+    try {
+      const response = await safeFetch(
+        getApiUrl('/api/mistakes/practice'),
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token && { 'Authorization': `Bearer ${token}` })
+          },
+          body: JSON.stringify({
+            count: 1,
+            question_ids: [questionId]
+          })
+        }
+      )
+
+      if (response.ok) {
+        const data = await response.json()
+        // 导航到练习页面，传入session_id
+        window.location.href = `/quiz?session=${data.session_id}&mode=practice`
+      }
+    } catch (error) {
+      console.error('创建练习会话失败:', error)
+    }
+  }
+
+  const handleBatchPractice = async () => {
+    // 创建批量练习会话（基于当前筛选）
+    try {
+      const config: any = {
+        count: 10
+      }
+
+      // 如果有筛选条件，添加到配置中
+      if (filter !== 'all') {
+        config.dimension = filter
+      }
+
+      const response = await safeFetch(
+        getApiUrl('/api/mistakes/practice'),
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token && { 'Authorization': `Bearer ${token}` })
+          },
+          body: JSON.stringify(config)
+        }
+      )
+
+      if (response.ok) {
+        const data = await response.json()
+        // 导航到练习页面
+        window.location.href = `/quiz?session=${data.session_id}&mode=practice`
+      }
+    } catch (error) {
+      console.error('创建批量练习失败:', error)
+    }
   }
 
   const handleFilterChange = async (dimension: string) => {
     setFilter(dimension)
-    // TODO: 调用筛选API
+    setLoading(true)
+
+    try {
+      // 构建查询参数
+      const params = new URLSearchParams()
+      if (dimension !== 'all') {
+        params.append('competency_dimension', dimension)
+      }
+
+      const response = await safeFetch(
+        getApiUrl(`/api/mistakes?${params.toString()}`),
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token && { 'Authorization': `Bearer ${token}` })
+          }
+        }
+      )
+
+      if (response.ok) {
+        const data = await response.json()
+        setMistakes(data.mistakes)
+      }
+    } catch (error) {
+      console.error('筛选错题失败:', error)
+    } finally {
+      setLoading(false)
+    }
   }
 
   // 如果用户未登录，显示提示
@@ -329,10 +413,7 @@ export default function MistakesPage() {
             animate={{ scale: 1 }}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            onClick={() => {
-              // TODO: 开始专项练习
-              console.log('开始专项练习')
-            }}
+            onClick={handleBatchPractice}
             className="p-4 bg-black text-white rounded-full shadow-lg hover:bg-gray-800 transition-colors"
             title="开始专项练习"
           >

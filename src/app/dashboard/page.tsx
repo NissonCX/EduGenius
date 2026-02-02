@@ -18,6 +18,8 @@ export default function DashboardPage() {
   const [isDataLoading, setIsDataLoading] = useState(true)  // 重命名避免冲突
   const [userStats, setUserStats] = useState<any>(null)
   const [mistakeStats, setMistakeStats] = useState<any>(null)
+  const [availableDocuments, setAvailableDocuments] = useState<any[]>([])
+  const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null)
 
   // 获取用户当前风格（从后端获取，不可修改）
   const teachingStyle = user?.teachingStyle || 3
@@ -32,7 +34,25 @@ export default function DashboardPage() {
 
       setIsDataLoading(true)
       try {
-        const documentId = 1 // TODO: 从用户当前学习的文档获取
+        // 获取可用文档列表
+        const docs = await fetchAvailableDocuments(token || undefined)
+        setAvailableDocuments(docs)
+
+        // 获取用户最近学习的进度记录
+        const recentProgress = await fetchRecentProgress(user.id, token || undefined)
+
+        // 确定要显示的文档ID
+        let documentId = selectedDocumentId
+        if (!documentId && docs.length > 0) {
+          // 如果没有选中文档，使用最近学习的文档
+          documentId = recentProgress?.document_id || docs[0].id
+          setSelectedDocumentId(documentId)
+        }
+
+        if (!documentId) {
+          setIsDataLoading(false)
+          return
+        }
 
         // 并行获取数据
         const [competency, graph, stats, mistakes] = await Promise.all([
@@ -54,7 +74,67 @@ export default function DashboardPage() {
     }
 
     loadData()
-  }, [user.id, isAuthenticated, authLoading])
+  }, [user.id, isAuthenticated, authLoading, selectedDocumentId])
+
+  // 当用户选择不同文档时
+  const handleDocumentChange = (docId: number) => {
+    setSelectedDocumentId(docId)
+  }
+
+  // 获取可用文档列表
+  const fetchAvailableDocuments = async (token?: string) => {
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+
+      const response = await fetch(
+        getApiUrl('/api/documents'),
+        { headers }
+      )
+
+      if (response.ok) {
+        const data = await response.json()
+        return data.documents || []
+      }
+    } catch (error) {
+      console.error('Error fetching documents:', error)
+    }
+    return []
+  }
+
+  // 获取用户最近学习的进度记录
+  const fetchRecentProgress = async (userId: number, token?: string) => {
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+
+      const response = await fetch(
+        getApiUrl(`/api/users/${userId}/progress`),
+        { headers }
+      )
+
+      if (response.ok) {
+        const progress = await response.json()
+        // 返回最近访问的进度记录
+        if (progress && progress.length > 0) {
+          return progress.sort((a: any, b: any) =>
+            new Date(b.last_accessed_at || 0).getTime() - new Date(a.last_accessed_at || 0).getTime()
+          )[0]
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching recent progress:', error)
+    }
+    return null
+  }
 
   // 获取用户统计数据
   const fetchUserStats = async (userId: number, token?: string) => {
@@ -162,6 +242,26 @@ export default function DashboardPage() {
           💡 学习时可以临时调整风格，不会改变你的偏好设置
         </p>
       </section>
+
+      {/* Document Selector */}
+      {availableDocuments.length > 0 && (
+        <section className="container-x py-4 border-b border-gray-200">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-gray-700">查看文档：</span>
+            <select
+              value={selectedDocumentId || ''}
+              onChange={(e) => handleDocumentChange(Number(e.target.value))}
+              className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-black"
+            >
+              {availableDocuments.map((doc) => (
+                <option key={doc.id} value={doc.id}>
+                  {doc.title}
+                </option>
+              ))}
+            </select>
+          </div>
+        </section>
+      )}
 
       {/* Visualization Grid */}
       {isDataLoading || authLoading ? (
