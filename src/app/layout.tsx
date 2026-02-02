@@ -7,6 +7,7 @@ import { MobileNav } from '@/components/layout/MobileNav'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ToastProvider } from '@/components/Toast'
 import { AuthProvider } from '@/contexts/AuthContext'
+import PWAInstaller from '@/components/PWAInstaller'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -17,6 +18,19 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: 'EduGenius - AI 自适应教育平台',
   description: '基于 LangGraph 多智能体架构的高端 AI 自适应学习平台',
+  manifest: '/manifest.json',
+  themeColor: '#000000',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'EduGenius',
+  },
+  viewport: {
+    width: 'device-width',
+    initialScale: 1,
+    maximumScale: 1,
+    userScalable: false,
+  },
 }
 
 export default function RootLayout({
@@ -26,10 +40,21 @@ export default function RootLayout({
 }) {
   return (
     <html lang="zh-CN" className={inter.variable}>
+      <head>
+        <link rel="manifest" href="/manifest.json" />
+        <link rel="icon" href="/icon-192.png" />
+        <link rel="apple-touch-icon" href="/icon-192.png" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="apple-mobile-web-app-title" content="EduGenius" />
+      </head>
       <body className="antialiased">
         <AuthProvider>
           <ToastProvider>
             <ErrorBoundary>
+              {/* PWA 安装提示组件 */}
+              <PWAInstaller />
+
               {/* 桌面端侧边栏 - 固定定位 */}
               <div className="hidden lg:block">
                 <Sidebar />
@@ -45,6 +70,20 @@ export default function RootLayout({
             </ErrorBoundary>
           </ToastProvider>
         </AuthProvider>
+        <script>{`
+          // 注册 Service Worker
+          if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+              navigator.serviceWorker.register('/sw.js')
+                .then((registration) => {
+                  console.log('SW registered: ', registration);
+                })
+                .catch((registrationError) => {
+                  console.log('SW registration failed: ', registrationError);
+                });
+            });
+          }
+        `}</script>
       </body>
     </html>
   )

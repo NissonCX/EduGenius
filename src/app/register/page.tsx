@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { BookOpen, CheckCircle2 } from 'lucide-react'
 import { getApiUrl } from '@/lib/config'
+import { useAuth } from '@/contexts/AuthContext'
 
 // 导师风格选项
 const TEACHING_STYLES = [
@@ -48,6 +49,7 @@ const TEACHING_STYLES = [
 
 export default function RegisterPage() {
   const router = useRouter()
+  const { login } = useAuth()  // 使用 AuthContext
   const [formData, setFormData] = useState({
     email: '',
     username: '',
@@ -74,12 +76,16 @@ export default function RegisterPage() {
 
       if (response.ok) {
         const result = await response.json()
-        // 保存 token 到 localStorage
-        localStorage.setItem('token', result.access_token)
-        localStorage.setItem('user_id', result.user_id.toString())
-        localStorage.setItem('user_email', result.email)
-        localStorage.setItem('username', result.username)
-        localStorage.setItem('teaching_style', selectedStyle.toString())
+
+        // 使用 AuthContext 的 login 方法
+        login(
+          result.access_token,
+          result.refresh_token || '',  // 传递 refresh token
+          result.user_id,
+          result.email,
+          result.username,
+          selectedStyle
+        )
 
         // 注册成功，跳转到学习页面
         router.push('/study')

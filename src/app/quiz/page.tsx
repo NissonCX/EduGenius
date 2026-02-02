@@ -34,6 +34,7 @@ function QuizPageContent() {
   // 使用新的参数名称
   const docId = searchParams.get('doc');
   const chapterId = searchParams.get('chapter');
+  const subsectionId = searchParams.get('subsection'); // 新增：小节参数
   const mode = searchParams.get('mode') || 'practice'; // 'practice' or 'test'
 
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -43,6 +44,7 @@ function QuizPageContent() {
   const [quizResults, setQuizResults] = useState<QuizResults | null>(null);
   const [documentTitle, setDocumentTitle] = useState('');
   const [chapterTitle, setChapterTitle] = useState('');
+  const [subsectionTitle, setSubsectionTitle] = useState(''); // 新增：小节标题
 
   useEffect(() => {
     if (docId && chapterId) {
@@ -52,7 +54,7 @@ function QuizPageContent() {
       setError('缺少必需参数：doc 或 chapter');
       setLoading(false);
     }
-  }, [docId, chapterId]);
+  }, [docId, chapterId, subsectionId]); // 添加 subsectionId 依赖
 
   const loadChapterInfo = async () => {
     try {
@@ -78,9 +80,15 @@ function QuizPageContent() {
       setLoading(true);
       setError(null);
 
+      // 构建API URL，如果有小节参数则添加
+      let apiUrl = `/api/quiz/questions/${docId}/${chapterId}`;
+      if (subsectionId) {
+        apiUrl += `?subsection_number=${encodeURIComponent(subsectionId)}`;
+      }
+
       // Get questions from API
       const response = await fetch(
-        getApiUrl(`/api/quiz/questions/${docId}/${chapterId}`),
+        getApiUrl(apiUrl),
         { headers: getAuthHeaders() }
       );
 

@@ -5,6 +5,7 @@
  * 使用统一的 LaTeX 处理器，确保与 ChatMessage 一致
  */
 
+import React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Bot } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
@@ -33,9 +34,27 @@ interface StreamingMessageProps {
   isComplete?: boolean
 }
 
-export function StreamingMessage({ content, isComplete = false }: StreamingMessageProps) {
-  // 使用统一的处理函数
-  const renderContent = processLatexInMarkdown(content, !isComplete)
+// 自定义比较函数，优化流式消息渲染
+function arePropsEqual(prevProps: StreamingMessageProps, nextProps: StreamingMessageProps) {
+  // 如果内容长度差异太大（流式更新中），不使用 memo
+  const lengthDiff = Math.abs(prevProps.content.length - nextProps.content.length)
+  if (lengthDiff > 50) {
+    return false
+  }
+  // 如果完成状态改变，需要重新渲染
+  if (prevProps.isComplete !== nextProps.isComplete) {
+    return false
+  }
+  // 内容相同或很接近时，使用 memo
+  return prevProps.content === nextProps.content
+}
+
+export const StreamingMessage = React.memo(function StreamingMessage({ content, isComplete = false }: StreamingMessageProps) {
+  // 使用统一的处理函数 - 添加 memo 避免频繁处理
+  const renderContent = React.useMemo(
+    () => processLatexInMarkdown(content, !isComplete),
+    [content, isComplete]
+  )
 
   return (
     <div className="group relative px-4 py-6 hover:bg-gray-50/50 transition-colors">
@@ -180,4 +199,4 @@ export function StreamingMessage({ content, isComplete = false }: StreamingMessa
       </div>
     </div>
   )
-}
+}, arePropsEqual)

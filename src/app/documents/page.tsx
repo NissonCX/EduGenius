@@ -11,6 +11,7 @@ import { Upload, FileText, Trash2, BookOpen, X, Loader2, CheckCircle2, AlertCirc
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { getApiUrl, fetchWithTimeout, getAuthHeadersSimple } from '@/lib/config'
+import { DocumentListSkeleton } from '@/components/ui/Skeleton'
 
 interface Document {
   id: number
@@ -42,6 +43,9 @@ export default function DocumentsPage() {
   // 用户信息（避免 hydration 问题）
   const [username, setUsername] = useState<string>('用户')
   const [mounted, setMounted] = useState(false)
+
+  // 错误提示状态
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   // 客户端挂载后读取用户信息
   useEffect(() => {
@@ -164,7 +168,7 @@ export default function DocumentsPage() {
     }
   }
 
-  // 上传文件
+  // 上传文件（增强版 - 支持并行上传）
   const handleUpload = async () => {
     if (selectedFiles.length === 0) return
 
@@ -173,40 +177,82 @@ export default function DocumentsPage() {
     setUploadProgress(0)
     setUploadMessage('')
 
+    // 并发上传队列（最多同时 3 个文件）
+    const CONCURRENT_UPLOADS = 3
+    const uploadQueue = [...selectedFiles]
+    const results: { file: string; success: boolean; error?: string }[] = []
+    let completed = 0
+
     try {
-      for (let i = 0; i < selectedFiles.length; i++) {
-        const file = selectedFiles[i]
+      // 并发上传函数
+      const uploadFile = async (file: File): Promise<{ file: string; success: boolean; error?: string }> => {
         const formData = new FormData()
         formData.append('file', file)
         formData.append('title', file.name)
 
-        const response = await fetch(getApiUrl('/api/documents/upload'), {
-          method: 'POST',
-          headers: getAuthHeadersSimple(false),  // false = 不设置 Content-Type，让浏览器自动处理 FormData
-          body: formData
-        })
+        try {
+          const response = await fetch(getApiUrl('/api/documents/upload'), {
+            method: 'POST',
+            headers: getAuthHeadersSimple(false),
+            body: formData
+          })
 
-        setUploadProgress(((i + 1) / selectedFiles.length) * 100)
+          if (!response.ok) {
+            const error = await response.json().catch(() => ({ detail: '上传失败' }))
+            return { file: file.name, success: false, error: error.detail || '上传失败' }
+          }
 
-        if (!response.ok) {
-          const error = await response.json().catch(() => ({ detail: '上传失败' }))
-          throw new Error(error.detail || '上传失败')
+          return { file: file.name, success: true }
+        } catch (error: any) {
+          return { file: file.name, success: false, error: error.message }
         }
       }
 
-      setUploadStatus('success')
-      setUploadMessage(`成功上传 ${selectedFiles.length} 个文件`)
-      setSelectedFiles([])
-      
-      // 刷新列表
-      await loadDocuments()
-      
-      // 3秒后重置状态
-      setTimeout(() => {
-        setUploadStatus('idle')
-        setUploadMessage('')
-      }, 3000)
-      
+      // 分批处理
+      while (uploadQueue.length > 0) {
+        const batch = uploadQueue.splice(0, CONCURRENT_UPLOADS)
+        const batchResults = await Promise.all(batch.map(file => uploadFile(file)))
+
+        results.push(...batchResults)
+        completed += batchResults.length
+
+        // 更新进度
+        setUploadProgress((completed / selectedFiles.length) * 100)
+
+        // 更新状态消息
+        const successCount = results.filter(r => r.success).length
+        setUploadMessage(`正在上传: ${successCount}/${selectedFiles.length} 完成`)
+      }
+
+      // 检查结果
+      const successCount = results.filter(r => r.success).length
+      const failedResults = results.filter(r => !r.success)
+
+      if (failedResults.length === 0) {
+        setUploadStatus('success')
+        setUploadMessage(`✅ 成功上传 ${successCount} 个文件`)
+        setSelectedFiles([])
+
+        // 刷新列表
+        await loadDocuments()
+
+        // 3秒后重置状态
+        setTimeout(() => {
+          setUploadStatus('idle')
+          setUploadMessage('')
+        }, 3000)
+      } else {
+        setUploadStatus('partial')
+        const failedNames = failedResults.map(r => r.file).join(', ')
+        setUploadMessage(`⚠️ ${successCount}/${selectedFiles.length} 成功\n失败: ${failedNames}`)
+
+        // 5秒后重置状态
+        setTimeout(() => {
+          setUploadStatus('idle')
+          setUploadMessage('')
+        }, 5000)
+      }
+
     } catch (error: any) {
       setUploadStatus('error')
       setUploadMessage(error.message || '上传失败')
@@ -228,16 +274,35 @@ export default function DocumentsPage() {
       if (response.ok) {
         setDocuments(prev => prev.filter(doc => doc.id !== documentId))
       } else {
-        alert('删除失败')
+        setErrorMessage('删除失败，请稍后重试')
+        setTimeout(() => setErrorMessage(null), 3000)
       }
     } catch (err) {
       console.error('删除失败:', err)
-      alert('删除失败')
+      setErrorMessage('删除失败，请稍后重试')
+      setTimeout(() => setErrorMessage(null), 3000)
     }
   }
 
   return (
     <div className="min-h-screen bg-white">
+      {/* 错误提示 */}
+      <AnimatePresence>
+        {errorMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-50"
+          >
+            <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <span className="text-sm font-medium">{errorMessage}</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* 顶部导航 */}
       <div className="border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-6 py-4">
@@ -359,7 +424,10 @@ export default function DocumentsPage() {
         <div>
           <h2 className="text-lg font-semibold mb-4">我的文档</h2>
 
-          {documents.length === 0 && !loading ? (
+          {/* 加载中 - 显示骨架屏 */}
+          {loading ? (
+            <DocumentListSkeleton count={6} />
+          ) : documents.length === 0 ? (
             <div className="text-center py-16 bg-gray-50 rounded-xl">
               <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <p className="text-gray-600">还没有上传任何文档</p>

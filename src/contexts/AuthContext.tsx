@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
+import { getApiUrl } from '@/lib/config'
 
 interface User {
   id: number | null
@@ -14,16 +15,18 @@ interface User {
 interface AuthState {
   user: User
   token: string | null
+  refreshToken: string | null
   isAuthenticated: boolean
   isLoading: boolean
 }
 
 interface AuthContextType extends AuthState {
-  login: (token: string, userId: number, email: string, username: string, teachingStyle: number) => void
+  login: (token: string, refreshToken: string, userId: number, email: string, username: string, teachingStyle: number) => void
   logout: () => void
   updateUser: (updates: Partial<User>) => void
   getAuthHeaders: (contentType?: boolean) => HeadersInit
   checkAuth: () => boolean
+  refreshToken: () => Promise<boolean>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -40,16 +43,21 @@ interface AuthProviderProps {
   children: ReactNode
 }
 
+// 防止并发刷新请求
+let isRefreshing = false
+
 /**
  * AuthProvider - 全局认证状态管理
  *
  * 使用 React Context 确保所有组件共享同一份认证状态
  * 解决登录后其他组件（如 Sidebar）不同步更新的问题
+ * 支持自动刷新 Token
  */
 export function AuthProvider({ children }: AuthProviderProps) {
   const [authState, setAuthState] = useState<AuthState>({
     user: INITIAL_USER,
     token: null,
+    refreshToken: null,
     isAuthenticated: false,
     isLoading: false  // 🔧 关键修复：初始状态不阻塞
   })
@@ -64,6 +72,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const loadAuth = () => {
       try {
         const token = localStorage.getItem('token')
+        const refreshToken = localStorage.getItem('refresh_token')
         const userId = localStorage.getItem('user_id')
         const email = localStorage.getItem('user_email')
         const username = localStorage.getItem('username')
@@ -80,6 +89,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
             token: token
           },
           token,
+          refreshToken,
           isAuthenticated,
           isLoading: false
         })
@@ -88,6 +98,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setAuthState({
           user: INITIAL_USER,
           token: null,
+          refreshToken: null,
           isAuthenticated: false,
           isLoading: false
         })
@@ -98,7 +109,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     // 监听 storage 事件（多标签页同步）
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'token' || e.key === 'user_id') {
+      if (e.key === 'token' || e.key === 'user_id' || e.key === 'refresh_token') {
         loadAuth()
       }
     }
@@ -110,6 +121,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // 登录
   const login = useCallback((
     token: string,
+    refreshToken: string,
     userId: number,
     email: string,
     username: string,
@@ -118,6 +130,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       // Store individual keys (for backward compatibility)
       localStorage.setItem('token', token)
+      localStorage.setItem('refresh_token', refreshToken)
       localStorage.setItem('user_id', userId.toString())
       localStorage.setItem('user_email', email)
       localStorage.setItem('username', username)
@@ -135,6 +148,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setAuthState({
         user: { id: userId, email, username, teachingStyle, token },
         token,
+        refreshToken,
         isAuthenticated: true,
         isLoading: false
       })
@@ -148,6 +162,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const logout = useCallback(() => {
     try {
       localStorage.removeItem('token')
+      localStorage.removeItem('refresh_token')
       localStorage.removeItem('user_id')
       localStorage.removeItem('user_email')
       localStorage.removeItem('username')
@@ -157,6 +172,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setAuthState({
         user: INITIAL_USER,
         token: null,
+        refreshToken: null,
         isAuthenticated: false,
         isLoading: false
       })
@@ -167,6 +183,61 @@ export function AuthProvider({ children }: AuthProviderProps) {
       console.error('登出失败:', error)
     }
   }, [router])
+
+  // 刷新 Token
+  const refreshTokenFunc = useCallback(async (): Promise<boolean> => {
+    // 防止并发刷新
+    if (isRefreshing) {
+      return false
+    }
+
+    const currentRefreshToken = authState.refreshToken || localStorage.getItem('refresh_token')
+    if (!currentRefreshToken) {
+      return false
+    }
+
+    isRefreshing = true
+
+    try {
+      const response = await fetch(getApiUrl('/api/users/refresh-token'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: currentRefreshToken })
+      })
+
+      if (!response.ok) {
+        throw new Error('Token refresh failed')
+      }
+
+      const data = await response.json()
+
+      // 更新状态和存储
+      localStorage.setItem('token', data.access_token)
+      if (data.refresh_token) {
+        localStorage.setItem('refresh_token', data.refresh_token)
+      }
+
+      setAuthState(prev => ({
+        ...prev,
+        token: data.access_token,
+        refreshToken: data.refresh_token || prev.refreshToken,
+        user: {
+          ...prev.user,
+          token: data.access_token
+        }
+      }))
+
+      console.log('✅ Token refreshed successfully')
+      return true
+    } catch (error) {
+      console.error('❌ Token refresh failed:', error)
+      // 刷新失败，自动登出
+      logout()
+      return false
+    } finally {
+      isRefreshing = false
+    }
+  }, [authState.refreshToken, logout])
 
   // 更新用户信息
   const updateUser = useCallback((updates: Partial<User>) => {
@@ -218,23 +289,27 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const value = useMemo<AuthContextType>(() => ({
     user: authState.user,
     token: authState.token,
+    refreshToken: authState.refreshToken,
     isAuthenticated: authState.isAuthenticated,
     isLoading: authState.isLoading,
     login,
     logout,
     updateUser,
     getAuthHeaders,
-    checkAuth
+    checkAuth,
+    refreshToken: refreshTokenFunc
   }), [
     authState.user,
     authState.token,
+    authState.refreshToken,
     authState.isAuthenticated,
     authState.isLoading,
     login,
     logout,
     updateUser,
     getAuthHeaders,
-    checkAuth
+    checkAuth,
+    refreshTokenFunc
   ])
 
   return (

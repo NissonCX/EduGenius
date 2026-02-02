@@ -10,7 +10,7 @@
  * - 连线强度可视化
  */
 
-import { useEffect, useRef, useState, useMemo } from 'react'
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { Search, Filter, ChevronDown, ChevronUp, BookOpen, Clock, Lock } from 'lucide-react'
 
 interface KnowledgeNode {
@@ -141,7 +141,33 @@ const DEFAULT_LINKS: KnowledgeLink[] = [
   { source: 'adv2', target: 'exp1', strength: 0.5 },
 ]
 
-export function KnowledgeConstellation({
+// 自定义比较函数 - 优化节点数据比较
+function arePropsEqual(prevProps: KnowledgeConstellationProps, nextProps: KnowledgeConstellationProps) {
+  // 比较节点数量
+  const prevNodes = prevProps.nodes || DEFAULT_NODES
+  const nextNodes = nextProps.nodes || DEFAULT_NODES
+  if (prevNodes.length !== nextNodes.length) return false
+
+  // 比较节点关键属性
+  for (let i = 0; i < prevNodes.length; i++) {
+    const prev = prevNodes[i]
+    const next = nextNodes[i]
+    if (prev.id !== next.id ||
+        prev.label !== next.label ||
+        prev.status !== next.status ||
+        prev.progress !== next.progress) {
+      return false
+    }
+  }
+
+  // 比较基本 props
+  return (
+    prevProps.className === nextProps.className &&
+    prevProps.height === nextProps.height
+  )
+}
+
+export const KnowledgeConstellation = React.memo(function KnowledgeConstellation({
   nodes: propNodes,
   links: propLinks,
   onNodeClick,
@@ -231,8 +257,8 @@ export function KnowledgeConstellation({
     setNodePositions(positions)
   }, [mounted, filteredNodes])
 
-  // 切换节点展开状态
-  const toggleNodeExpansion = (nodeId: string, e: React.MouseEvent) => {
+  // 切换节点展开状态 - 使用 useCallback 优化
+  const toggleNodeExpansion = useCallback((nodeId: string, e: React.MouseEvent) => {
     e.stopPropagation()
     setExpandedNodes(prev => {
       const newSet = new Set(prev)
@@ -243,7 +269,7 @@ export function KnowledgeConstellation({
       }
       return newSet
     })
-  }
+  }, [])
 
   // 根据状态获取节点颜色
   const getNodeStyle = (node: KnowledgeNode) => {
@@ -657,4 +683,4 @@ export function KnowledgeConstellation({
       </div>
     </div>
   )
-}
+}, arePropsEqual)

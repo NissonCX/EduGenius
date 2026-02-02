@@ -13,7 +13,8 @@ import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { BookOpen, ChevronRight, Lock, CheckCircle2, Loader2, ArrowLeft, Settings, MessageSquare } from 'lucide-react'
-import { getApiUrl, fetchWithTimeout, getAuthHeadersSimple } from '@/lib/config'
+import { getApiUrl, fetchWithTimeout, getAuthHeadersSimple, fetchWithCache } from '@/lib/config'
+import { generateCacheKey } from '@/lib/cache'
 import { StudyChat } from '@/components/chat/StudyChat'
 import { SubsectionSelector } from '@/components/study/SubsectionSelector'
 import { ProgressCard } from '@/components/progress/ProgressCard'
@@ -66,6 +67,10 @@ function StudyPageContent() {
   const [teachingStyle, setTeachingStyle] = useState(3)  // 默认 L3
   const [expandedChapter, setExpandedChapter] = useState<number | null>(null)  // 控制章节展开
   const [currentSubsection, setCurrentSubsection] = useState<Subsection | null>(null)  // 当前选中的小节
+
+  // 分页状态
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage] = useState(6)  // 每页显示6个章节
 
   // 初始化教学风格（优先从 AuthContext 读取）
   useEffect(() => {
@@ -126,23 +131,19 @@ function StudyPageContent() {
   const loadDocuments = async () => {
     console.log('🔄 [Study] 加载文档列表...')
     try {
-      const response = await fetchWithTimeout(
+      const cacheKey = generateCacheKey('documents', {})
+      const data = await fetchWithCache(
         getApiUrl('/api/documents/list'),
         {
           method: 'GET',
           headers: getAuthHeadersSimple()
         },
-        60000  // 60秒超时 - 后端OCR可能阻塞其他请求
+        cacheKey,
+        { ttl: 5 * 60 * 1000, persistent: true }  // 5分钟缓存，持久化
       )
 
-      console.log('📥 [Study] 响应状态:', response.status)
-
-      if (response.ok) {
-        const data = await response.json()
-        setDocuments(data.documents || [])
-      } else {
-        console.warn('⚠️ [Study] API返回错误:', response.status)
-      }
+      console.log('📥 [Study] 响应状态: 200 (缓存)')
+      setDocuments(data.documents || [])
     } catch (err) {
       console.error('❌ [Study] 加载文档失败:', err)
       // 不清空文档列表，保持已有数据
@@ -153,26 +154,26 @@ function StudyPageContent() {
 
   const loadChapters = async (documentId: number) => {
     try {
-      const response = await fetchWithTimeout(
+      const cacheKey = generateCacheKey('chapters', { documentId })
+      const data = await fetchWithCache(
         getApiUrl(`/api/documents/${documentId}/chapters`),
         {
           method: 'GET',
           headers: getAuthHeadersSimple()
         },
-        60000  // 60秒超时
+        cacheKey,
+        { ttl: 10 * 60 * 1000, persistent: true }  // 10分钟缓存，持久化
       )
 
-      if (response.ok) {
-        const data = await response.json()
-        setSelectedDoc({
-          id: data.document_id,
-          title: data.document_title,
-          filename: data.document_title,
-          total_chapters: data.total_chapters,
-          processing_status: 'completed'
-        })
-        setChapters(data.chapters || [])
-      }
+      setSelectedDoc({
+        id: data.document_id,
+        title: data.document_title,
+        filename: data.document_title,
+        total_chapters: data.total_chapters,
+        processing_status: 'completed'
+      })
+      setChapters(data.chapters || [])
+      setCurrentPage(1)  // 重置到第一页
     } catch (err) {
       console.error('❌ [Study] 加载章节失败:', err)
     } finally {
@@ -379,8 +380,12 @@ function StudyPageContent() {
               <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
             </div>
           ) : (
-            <div className="space-y-4">
-              {chapters.map((chapter, index) => (
+            <>
+              {/* 分页的章节列表 */}
+              <div className="space-y-4">
+                {chapters
+                  .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+                  .map((chapter, index) => (
                 <motion.div
                   key={`chapter-${chapter.chapter_number}-${index}`}
                   initial={{ opacity: 0, x: -20 }}
@@ -471,22 +476,42 @@ function StudyPageContent() {
                           >
                             <div className="pl-6 pr-2 pb-2 space-y-1">
                               {chapter.subsections.map((subsection) => (
-                                <button
+                                <div
                                   key={subsection.subsection_number}
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    router.push(`/study?doc=${docId}&chapter=${chapter.chapter_number}&subsection=${subsection.subsection_number}`)
-                                  }}
-                                  className="w-full text-left px-3 py-2 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors flex items-center gap-2 group"
+                                  className="flex items-center gap-2 group"
                                 >
-                                  <span className="text-xs font-medium text-gray-500 group-hover:text-black">
-                                    {subsection.subsection_number}
-                                  </span>
-                                  <span className="text-sm text-gray-700 group-hover:text-black flex-1">
-                                    {subsection.subsection_title}
-                                  </span>
-                                  <MessageSquare className="w-3 h-3 text-gray-400 group-hover:text-black" />
-                                </button>
+                                  {/* 小节信息 */}
+                                  <div className="flex-1 px-3 py-2 rounded-lg bg-gray-50 flex items-center gap-2">
+                                    <span className="text-xs font-medium text-gray-500">
+                                      {subsection.subsection_number}
+                                    </span>
+                                    <span className="text-sm text-gray-700 flex-1">
+                                      {subsection.subsection_title}
+                                    </span>
+                                  </div>
+
+                                  {/* 操作按钮 */}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      router.push(`/study?doc=${docId}&chapter=${chapter.chapter_number}&subsection=${subsection.subsection_number}`)
+                                    }}
+                                    className="p-2 rounded-lg bg-gray-50 hover:bg-black hover:text-white transition-colors"
+                                    title="学习对话"
+                                  >
+                                    <MessageSquare className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      router.push(`/quiz?doc=${docId}&chapter=${chapter.chapter_number}&subsection=${subsection.subsection_number}`)
+                                    }}
+                                    className="p-2 rounded-lg bg-gray-50 hover:bg-black hover:text-white transition-colors"
+                                    title="小节测试"
+                                  >
+                                    <BookOpen className="w-4 h-4" />
+                                  </button>
+                                </div>
                               ))}
                             </div>
                           </motion.div>
@@ -517,6 +542,56 @@ function StudyPageContent() {
                 </motion.div>
               ))}
             </div>
+
+            {/* 分页控件 */}
+            {chapters.length > itemsPerPage && (
+              <div className="flex items-center justify-center gap-4 mt-8 pt-4 border-t border-gray-200">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className={`px-4 py-2 rounded-lg transition-colors ${
+                    currentPage === 1
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-white border-2 border-gray-200 hover:border-black hover:shadow-md'
+                  }`}
+                >
+                  上一页
+                </button>
+
+                <div className="flex items-center gap-2">
+                  {Array.from({ length: Math.ceil(chapters.length / itemsPerPage) }, (_, i) => i + 1).map(pageNum => (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`w-10 h-10 rounded-lg font-medium transition-colors ${
+                        currentPage === pageNum
+                          ? 'bg-black text-white'
+                          : 'bg-white border-2 border-gray-200 hover:border-black hover:shadow-md'
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(Math.ceil(chapters.length / itemsPerPage), p + 1))}
+                  disabled={currentPage === Math.ceil(chapters.length / itemsPerPage)}
+                  className={`px-4 py-2 rounded-lg transition-colors ${
+                    currentPage === Math.ceil(chapters.length / itemsPerPage)
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-white border-2 border-gray-200 hover:border-black hover:shadow-md'
+                  }`}
+                >
+                  下一页
+                </button>
+
+                <span className="text-sm text-gray-500">
+                  第 {currentPage} / {Math.ceil(chapters.length / itemsPerPage)} 页
+                </span>
+              </div>
+            )}
+          </>
           )}
         </div>
       </div>

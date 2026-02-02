@@ -23,6 +23,8 @@ from app.core.security import (
     verify_password,
     get_password_hash,
     create_token_for_user,
+    create_refresh_token,
+    verify_token,
     get_current_user_optional,
     Token
 )
@@ -177,87 +179,6 @@ def calculate_competency_scores(quiz_attempts_with_questions) -> Dict[str, int]:
 
     return scores
 
-
-def calculate_competency_scores(quiz_attempts: List[QuizAttempt]) -> Dict[str, int]:
-    """
-    基于答题记录计算六维能力评分
-
-    Args:
-        quiz_attempts: 题目尝试记录列表
-
-    Returns:
-        Dict[str, int]: 六维能力评分
-    """
-    # 初始化各维度的数据
-    dimensions = {
-        'comprehension': {'correct': 0, 'total': 0, 'time': []},
-        'logic': {'correct': 0, 'total': 0, 'time': []},
-        'terminology': {'correct': 0, 'total': 0, 'time': []},
-        'memory': {'correct': 0, 'total': 0, 'time': []},
-        'application': {'correct': 0, 'total': 0, 'time': []},
-    }
-
-    # 用于计算稳定性
-    question_first_attempts = {}  # 记录每道题的第一次尝试
-
-    for attempt in quiz_attempts:
-        # 分类题目类型
-        question_type = classify_question_type(attempt.question_text)
-
-        # 更新对应维度数据
-        if question_type in dimensions:
-            dimensions[question_type]['total'] += 1
-            if attempt.is_correct:
-                dimensions[question_type]['correct'] += 1
-            if attempt.time_spent_seconds:
-                dimensions[question_type]['time'].append(attempt.time_spent_seconds)
-
-        # 记录第一次尝试（用于计算稳定性）
-        question_key = f"{attempt.question_text[:50]}"  # 使用题目前50字符作为唯一标识
-        if question_key not in question_first_attempts:
-            question_first_attempts[question_key] = attempt.is_correct
-
-    # 计算各维度得分
-    scores = {}
-
-    for dimension, data in dimensions.items():
-        if data['total'] == 0:
-            # 没有该类型题目，使用默认值
-            scores[dimension] = 50
-        else:
-            # 基础分数：正确率 * 100
-            accuracy_rate = data['correct'] / data['total']
-            base_score = accuracy_rate * 100
-
-            # 时间加成：答题时间合理则加分
-            time_bonus = 0
-            if data['time']:
-                avg_time = sum(data['time']) / len(data['time'])
-                # 假设理想答题时间是 30-120 秒
-                if 30 <= avg_time <= 120:
-                    time_bonus = 5
-                elif avg_time < 30:
-                    time_bonus = -5  # 答题太快可能不认真
-                # 超过120秒不扣分，因为题目可能很难
-
-            # 数量加成：题目越多，分数越可信
-            count_bonus = min(10, data['total'] * 2)
-
-            # 最终分数
-            final_score = min(100, max(0, int(base_score + time_bonus + count_bonus)))
-            scores[dimension] = final_score
-
-    # 计算稳定性（基于重复答题的改进情况）
-    if question_first_attempts:
-        first_attempts = list(question_first_attempts.values())
-        stability_score = int((sum(first_attempts) / len(first_attempts)) * 100)
-        scores['stability'] = stability_score
-    else:
-        scores['stability'] = 50
-
-    return scores
-
-
 # ============ 认证请求/响应模型 ============
 class LoginRequest(BaseModel):
     """登录请求"""
@@ -268,11 +189,24 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     """登录响应"""
     access_token: str
+    refresh_token: str
     token_type: str
     user_id: int
     email: str
     username: str
     teaching_style: int  # 导师风格偏好 (1-5)
+
+
+class RefreshTokenRequest(BaseModel):
+    """Refresh Token 请求"""
+    refresh_token: str
+
+
+class RefreshTokenResponse(BaseModel):
+    """Refresh Token 响应"""
+    access_token: str
+    refresh_token: str
+    token_type: str
 
 
 # ============ 请求/响应模型 ============
@@ -420,7 +354,32 @@ async def update_progress_activity(
 
 # ============ 端点实现 ============
 
-@router.post("/register")
+@router.post(
+    "/register",
+    response_model=LoginResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="用户注册",
+    description="""
+    创建新用户账户并自动登录。
+
+    **教学风格说明:**
+    - 1 (温柔): 耐心细致，用简单的例子和鼓励帮助学生理解
+    - 2 (耐心): 循序渐进，提供详细的讲解和指导
+    - 3 (标准): 平衡严谨，既讲清原理又注重应用
+    - 4 (严格): 注重细节，要求深入理解每一步推理
+    - 5 (严厉): 挑战思维，培养独立解决问题的能力
+
+    **密码要求:**
+    - 最少 8 个字符
+    - 至少一个大写字母
+    - 至少一个小写字母
+    - 至少一个数字
+    """,
+    responses={
+        201: {"description": "注册成功"},
+        400: {"description": "请求参数错误（邮箱已存在、用户名已使用或密码不符合要求）"}
+    }
+)
 async def register_user(
     user_data: UserRegister,
     db: AsyncSession = Depends(get_db)
@@ -493,7 +452,29 @@ async def register_user(
     }
 
 
-@router.post("/login", response_model=LoginResponse)
+@router.post(
+    "/login",
+    response_model=LoginResponse,
+    summary="用户登录",
+    description="""
+    使用邮箱和密码登录系统。
+
+    **返回信息:**
+    - access_token: JWT 访问令牌（有效期 2 小时）
+    - refresh_token: 刷新令牌（有效期 30 天）
+    - user_id: 用户 ID
+    - email: 用户邮箱
+    - username: 用户名
+    - teaching_style: 教学风格偏好（1-5）
+
+    **使用方式:**
+    在请求头中添加: `Authorization: Bearer {access_token}`
+    """,
+    responses={
+        200: {"description": "登录成功"},
+        401: {"description": "邮箱或密码错误"}
+    }
+)
 async def login(
     credentials: LoginRequest,
     db: AsyncSession = Depends(get_db)
@@ -526,16 +507,77 @@ async def login(
             detail="邮箱或密码错误"
         )
 
-    # 生成 JWT Token
+    # 生成 Access Token 和 Refresh Token
     access_token = create_token_for_user(user.id, user.email)
+    refresh_token = create_refresh_token({"sub": user.email, "user_id": user.id})
+
+    # 保存 refresh token 到数据库
+    user.refresh_token = refresh_token
+    await db.commit()
 
     return LoginResponse(
         access_token=access_token,
+        refresh_token=refresh_token,
         token_type="bearer",
         user_id=user.id,
         email=user.email,
         username=user.username,
         teaching_style=user.cognitive_level
+    )
+
+
+@router.post("/refresh-token", response_model=RefreshTokenResponse)
+async def refresh_token(
+    request: RefreshTokenRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    刷新 Access Token
+
+    - 验证 Refresh Token
+    - 生成新的 Access Token 和 Refresh Token
+    - 返回新的 token 对
+    """
+    # 验证 refresh token
+    token_data = verify_token(request.refresh_token, token_type="refresh")
+
+    if not token_data:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="无效的 refresh token"
+        )
+
+    # 查找用户
+    result = await db.execute(
+        select(User).where(User.id == token_data.user_id)
+    )
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="用户不存在"
+        )
+
+    # 验证 refresh token 是否与数据库中的匹配
+    if user.refresh_token != request.refresh_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="refresh token 已失效"
+        )
+
+    # 生成新的 access token 和 refresh token
+    new_access_token = create_token_for_user(user.id, user.email)
+    new_refresh_token = create_refresh_token({"sub": user.email, "user_id": user.id})
+
+    # 更新数据库中的 refresh token
+    user.refresh_token = new_refresh_token
+    await db.commit()
+
+    return RefreshTokenResponse(
+        access_token=new_access_token,
+        refresh_token=new_refresh_token,
+        token_type="bearer"
     )
 
 
@@ -640,7 +682,7 @@ async def get_user_history(
     quiz_attempts_with_questions = competency_result.all()
 
     # 计算六个维度的能力评分（使用 Question 表中的 competency_dimension）
-    competency_scores = calculate_competency_scores_v2(quiz_attempts_with_questions)
+    competency_scores = calculate_competency_scores(quiz_attempts_with_questions)
 
     return HistoryResponse(
         conversations=[

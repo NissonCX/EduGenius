@@ -10,10 +10,11 @@
  * - 平滑过渡动画
  */
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronDown, Loader2 } from 'lucide-react'
-import { getApiUrl, getAuthHeadersSimple, fetchWithTimeout } from '@/lib/config'
+import { getApiUrl, getAuthHeadersSimple, fetchWithTimeout, fetchWithCache } from '@/lib/config'
+import { generateCacheKey } from '@/lib/cache'
 
 interface Subsection {
   subsection_number: string
@@ -32,7 +33,18 @@ interface SubsectionSelectorProps {
   disabled?: boolean
 }
 
-export function SubsectionSelector({
+// 自定义比较函数
+function arePropsEqual(prevProps: SubsectionSelectorProps, nextProps: SubsectionSelectorProps) {
+  return (
+    prevProps.documentId === nextProps.documentId &&
+    prevProps.chapterId === nextProps.chapterId &&
+    prevProps.chapterTitle === nextProps.chapterTitle &&
+    prevProps.currentSubsection === nextProps.currentSubsection &&
+    prevProps.disabled === nextProps.disabled
+  )
+}
+
+export const SubsectionSelector = React.memo(function SubsectionSelector({
   documentId,
   chapterId,
   chapterTitle,
@@ -44,55 +56,56 @@ export function SubsectionSelector({
   const [isLoading, setIsLoading] = useState(false)
   const [isOpen, setIsOpen] = useState(false)
 
-  // 加载小节列表
-  useEffect(() => {
-    const loadSubsections = async () => {
-      setIsLoading(true)
-      try {
-        console.log(`[SubsectionSelector] 加载小节: document=${documentId}, chapter=${chapterId}`)
-        const response = await fetchWithTimeout(
-          getApiUrl(`/api/documents/${documentId}/chapters/${chapterId}/subsections`),
-          {
-            method: 'GET',
-            headers: getAuthHeadersSimple()
-          }
-        )
+  // 加载小节列表 - 使用 useCallback 避免重新创建
+  const loadSubsections = React.useCallback(async () => {
+    setIsLoading(true)
+    try {
+      console.log(`[SubsectionSelector] 加载小节: document=${documentId}, chapter=${chapterId}`)
+      const cacheKey = generateCacheKey('subsections', { documentId, chapterId })
+      const data = await fetchWithCache(
+        getApiUrl(`/api/documents/${documentId}/chapters/${chapterId}/subsections`),
+        {
+          method: 'GET',
+          headers: getAuthHeadersSimple()
+        },
+        cacheKey,
+        { ttl: 10 * 60 * 1000, persistent: true }  // 10分钟缓存，持久化
+      )
 
-        console.log(`[SubsectionSelector] 响应状态:`, response.status)
-
-        if (response.ok) {
-          const data = await response.json()
-          console.log(`[SubsectionSelector] 返回数据:`, data)
-          setSubsections(data.subsections || [])
-        } else {
-          console.error(`[SubsectionSelector] API 错误:`, response.status, response.statusText)
-        }
-      } catch (error) {
-        console.error('[SubsectionSelector] 加载小节失败:', error)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    if (documentId && chapterId) {
-      loadSubsections()
+      console.log(`[SubsectionSelector] 响应状态: 200 (缓存)`)
+      console.log(`[SubsectionSelector] 返回数据:`, data)
+      setSubsections(data.subsections || [])
+    } catch (error) {
+      console.error('[SubsectionSelector] 加载小节失败:', error)
+    } finally {
+      setIsLoading(false)
     }
   }, [documentId, chapterId])
 
-  // 当前选中的小节
-  const currentSub = subsections.find(s => s.subsection_number === currentSubsection)
+  // 加载小节列表
+  useEffect(() => {
+    if (documentId && chapterId) {
+      loadSubsections()
+    }
+  }, [documentId, chapterId, loadSubsections])
 
-  const handleSubsectionSelect = (subsection: Subsection) => {
+  // 当前选中的小节 - 使用 useMemo 优化
+  const currentSub = React.useMemo(
+    () => subsections.find(s => s.subsection_number === currentSubsection),
+    [subsections, currentSubsection]
+  )
+
+  const handleSubsectionSelect = React.useCallback((subsection: Subsection) => {
     onSubsectionChange(subsection)
     setIsOpen(false)
-  }
+  }, [onSubsectionChange])
 
-  const handleBreadcrumbClick = () => {
+  const handleBreadcrumbClick = React.useCallback(() => {
     console.log('[SubsectionSelector] 点击选择器, disabled=', disabled, 'subsections.length=', subsections.length)
     if (!disabled) {
       setIsOpen(!isOpen)
     }
-  }
+  }, [disabled, isOpen, subsections.length])
 
   return (
     <div className="relative">
@@ -220,4 +233,4 @@ export function SubsectionSelector({
       </AnimatePresence>
     </div>
   )
-}
+}, arePropsEqual)

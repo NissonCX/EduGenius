@@ -40,6 +40,7 @@ export default function LoginPage() {
         // 使用 useAuth 的 login 方法更新状态
         login(
           data.access_token,
+          data.refresh_token,  // 新增：传递 refresh token
           data.user_id,
           data.email,
           data.username,

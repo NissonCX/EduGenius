@@ -29,11 +29,13 @@ pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 SECRET_KEY = settings.JWT_SECRET_KEY or "your-super-secret-jwt-key-change-in-production-min-32-chars!"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES  # 从配置读取，默认 2 小时
+REFRESH_TOKEN_EXPIRE_DAYS = 30  # Refresh token 有效期：30 天
 
 
 class Token(BaseModel):
     """JWT Token 响应"""
     access_token: str
+    refresh_token: str
     token_type: str
 
 
@@ -41,6 +43,12 @@ class TokenData(BaseModel):
     """Token 数据"""
     email: Optional[str] = None
     user_id: Optional[int] = None
+    token_type: Optional[str] = None  # "access" or "refresh"
+
+
+class RefreshTokenRequest(BaseModel):
+    """Refresh Token 请求"""
+    refresh_token: str
 
 
 # ============ 辅助函数 ============
@@ -114,12 +122,13 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return encoded_jwt
 
 
-def verify_token(token: str) -> Optional[TokenData]:
+def verify_token(token: str, token_type: str = "access") -> Optional[TokenData]:
     """
     验证 JWT Token
 
     Args:
         token: JWT Token 字符串
+        token_type: Token 类型 ("access" 或 "refresh")
 
     Returns:
         TokenData: 解码后的 token 数据，如果验证失败则返回 None
@@ -128,14 +137,43 @@ def verify_token(token: str) -> Optional[TokenData]:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email: str = payload.get("sub")
         user_id: int = payload.get("user_id")
+        payload_type: str = payload.get("type")
 
         if email is None:
             return None
 
-        return TokenData(email=email, user_id=user_id)
+        # 验证 token 类型
+        if token_type == "refresh" and payload_type != "refresh":
+            return None
+        if token_type == "access" and payload_type == "refresh":
+            return None
+
+        return TokenData(email=email, user_id=user_id, token_type=payload_type)
 
     except JWTError:
         return None
+
+
+def create_refresh_token(data: dict) -> str:
+    """
+    创建 Refresh Token
+
+    Args:
+        data: 要编码的数据（通常包含 user_id 和 email）
+
+    Returns:
+        str: Refresh Token
+    """
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+
+    to_encode.update({
+        "exp": expire,
+        "type": "refresh"  # 标记为 refresh token
+    })
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+    return encoded_jwt
 
 
 # ============ 辅助函数 ============

@@ -5,6 +5,7 @@
  * 极简黑白美学风格，展示导师风格和核心考点
  */
 
+import React from 'react'
 import { motion } from 'framer-motion'
 import { Target, BookOpen, Lightbulb, CheckCircle2, Settings } from 'lucide-react'
 
@@ -27,7 +28,20 @@ const TEACHING_STYLES = {
   5: { label: 'L5 严厉', description: '挑战思维，独立解决', hint: '培养批判性思维' }
 }
 
-export function StudySidebar({
+// 自定义比较函数，避免不必要的重新渲染
+function arePropsEqual(prevProps: StudySidebarProps, nextProps: StudySidebarProps) {
+  return (
+    prevProps.teachingStyle === nextProps.teachingStyle &&
+    prevProps.chapterTitle === nextProps.chapterTitle &&
+    prevProps.documentTitle === nextProps.documentTitle &&
+    prevProps.keyPoints.length === nextProps.keyPoints.length &&
+    prevProps.keyPoints.every((p, i) => p === nextProps.keyPoints[i]) &&
+    prevProps.completedTopics.length === nextProps.completedTopics.length &&
+    prevProps.completedTopics.every((t, i) => t === nextProps.completedTopics[i])
+  )
+}
+
+export const StudySidebar = React.memo(function StudySidebar({
   teachingStyle,
   chapterTitle,
   keyPoints = [],
@@ -183,4 +197,4 @@ export function StudySidebar({
       </div>
     </div>
   )
-}
+}, arePropsEqual)

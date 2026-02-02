@@ -96,7 +96,17 @@ interface ChatMessageProps {
   message: Message
 }
 
-export function ChatMessage({ message }: ChatMessageProps) {
+// 自定义比较函数，避免不必要的重新渲染
+function arePropsEqual(prevProps: ChatMessageProps, nextProps: ChatMessageProps) {
+  return (
+    prevProps.message.id === nextProps.message.id &&
+    prevProps.message.content === nextProps.message.content &&
+    prevProps.message.role === nextProps.message.role &&
+    prevProps.message.timestamp.getTime() === nextProps.message.timestamp.getTime()
+  )
+}
+
+export const ChatMessage = React.memo(function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === 'user'
   const [copied, setCopied] = React.useState(false)
 
@@ -106,11 +116,11 @@ export function ChatMessage({ message }: ChatMessageProps) {
     [message.content, isUser]
   )
 
-  const handleCopy = () => {
+  const handleCopy = React.useCallback(() => {
     navigator.clipboard.writeText(message.content)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
-  }
+  }, [message.content])
 
   return (
     <motion.div
@@ -307,4 +317,4 @@ export function ChatMessage({ message }: ChatMessageProps) {
       </div>
     </motion.div>
   )
-}
+}, arePropsEqual)

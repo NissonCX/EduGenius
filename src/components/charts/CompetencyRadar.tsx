@@ -12,7 +12,7 @@
  * - 稳定性 (Stability)
  */
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   Radar,
   RadarChart,
@@ -60,7 +60,21 @@ const DEFAULT_DATA: CompetencyData[] = [
   { dimension: '稳定性', value: 72, fullMark: 100 }
 ]
 
-export function CompetencyRadar({
+// 自定义比较函数，避免昂贵的图表重新渲染
+function arePropsEqual(prevProps: CompetencyRadarProps, nextProps: CompetencyRadarProps) {
+  // 深度比较数据对象
+  const prevData = prevProps.data
+  const nextData = nextProps.data
+
+  if (!prevData && !nextData) return true
+  if (!prevData || !nextData) return false
+
+  // 比较所有维度
+  const dimensions = ['comprehension', 'logic', 'terminology', 'memory', 'application', 'stability'] as const
+  return dimensions.every(dim => prevData[dim] === nextData[dim])
+}
+
+export const CompetencyRadar = React.memo(function CompetencyRadar({
   data: propData,
   className
 }: CompetencyRadarProps) {
@@ -192,4 +206,4 @@ export function CompetencyRadar({
       </div>
     </div>
   )
-}
+}, arePropsEqual)
