@@ -28,15 +28,21 @@ EduGenius 旨在构建一个基于多智能体架构的自适应学习平台，�
 
 ### ⚠️ 当前状态
 
-**这是个人学习项目，目前处于早期开发阶段：**
+**这是个人学习项目，目前处于中期开发阶段：**
 
 - ✅ 基础架构已搭建完成
+- ✅ 用户认证系统完整
 - ✅ 核心对话功能可用
-- 🚧 多项功能仍在开发中
+- ✅ 文档上传和章节识别完成
+- ✅ 错题本功能基本实现
+- ✅ 仪表板和进度追踪完成
+- ✅ LaTeX 公式渲染正常
+- ✅ 对话记忆功能完整
+- 🚧 测验系统完善中
 - 🚧 存在已知 Bug 和限制
 - 🚧 未经充分测试
 
-### 🏗️ 核心特性（计划中）
+### 🏗️ 核心特性（已实现）
 
 - **AI 智能教学系统**：基于 LangGraph 的多智能体架构
 - **自适应难度调节**：L1-L5 五级教学风格
@@ -44,6 +50,9 @@ EduGenius 旨在构建一个基于多智能体架构的自适应学习平台，�
 - **小节级学习**：支持细粒度的知识点学习
 - **实时对话**：SSE 流式传输的 AI 导师对话
 - **能力评估**：六维能力评估系统
+- **错题本系统**：自动收集和复习错题
+- **学习进度追踪**：实时更新学习进度
+- **LaTeX 公式支持**：数学公式完美渲染
 
 ---
 
@@ -52,15 +61,16 @@ EduGenius 旨在构建一个基于多智能体架构的自适应学习平台，�
 ### 前端技术栈
 
 ```
-Next.js 16.1.6     # React 框架
-React 19           # UI 库
-TypeScript 5.9     # 类型系统
-TailwindCSS 4      # 样式框架
-Framer Motion      # 动画库
-Recharts           # 数据可视化
-React Markdown     # Markdown 渲染
-KaTeX              # 数学公式
-Mermaid            # 图表渲染
+Next.js 16.1.6      # React 框架
+React 19            # UI 库
+TypeScript 5.9      # 类型系统
+TailwindCSS 4       # 样式框架
+Framer Motion       # 动画库
+Recharts            # 数据可视化
+React Markdown      # Markdown 渲染
+KaTeX 0.16          # 数学公式
+Radix UI            # UI 组件库
+Lucide React        # 图标库
 ```
 
 ### 后端技术栈
@@ -70,19 +80,21 @@ FastAPI 0.115        # Web 框架
 LangGraph 0.2        # AI 智能体框架
 LangChain            # LLM 集成
 SQLAlchemy 2.0       # ORM
-ChromaDB             # 向量数据库
+ChromaDB 0.6         # 向量数据库
 SQLite               # 关系数据库
 Pydantic 2.10        # 数据验证
 Uvicorn              # ASGI 服务器
+PaddleOCR 2.7        # PDF 文字识别
 ```
 
 ### AI 能力
 
 ```
 通义千问 (DashScope)  # 主要 LLM
-Text Embeddings       # 向量嵌入
-RAG 检索增强          # 知识库查询
-PaddleOCR            # PDF 文字识别
+OpenAI GPT           # 备用 LLM
+Text Embeddings      # 向量嵌入
+RAG 检索增强         # 知识库查询
+PaddleOCR           # PDF 文字识别
 ```
 
 ---
@@ -119,6 +131,9 @@ pip install -r requirements.txt
 cp .env.example .env
 # 编辑 .env 文件，填入你的 DASHSCOPE_API_KEY（必需）
 
+# 初始化数据库
+python init_db.py
+
 # 启动后端服务
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
@@ -136,6 +151,10 @@ cd EduGenius
 # 安装依赖
 npm install
 
+# 配置环境变量
+cp .env.local.example .env.local
+# 编辑 .env.local，设置 NEXT_PUBLIC_API_URL=http://localhost:8000
+
 # 启动开发服务器
 npm run dev
 ```
@@ -145,50 +164,52 @@ npm run dev
 ### 4. 开始使用
 
 1. 访问 http://localhost:3000/register 注册账户
-2. 完成 5 道能力测评题目
-3. 系统推荐你的初始等级（L1-L5）
-4. 上传 PDF 教材或进入学习页面
+2. 选择教学风格偏好
+3. 上传 PDF 教材或进入学习页面
+4. 开始与 AI 导师对话学习
 
 ---
 
 ## 📊 开发进度
 
-**当前版本：v0.5.0-alpha**
+**当前版本：v1.0.0-alpha**
 
-**整体完成度：约 60%**
+**整体完成度：约 75%**
 
 ### ✅ 已完成功能
 
 | 模块 | 完成度 | 说明 |
 |------|--------|------|
-| 前端基础架构 | 90% | 主要页面已实现，部分待优化 |
-| AI 对话系统 | 75% | 基础对话可用，需要更多测试 |
-| 用户认证系统 | 80% | 注册登录正常，会话管理待完善 |
-| 文档上传 | 70% | PDF 解析基本可用，OCR 识别待优化 |
-| 章节识别 | 65% | 基于目录的章节划分已实现 |
-| 小节支持 | 50% | 数据模型完成，UI 部分实现 |
-| 教学风格系统 | 70% | L1-L5 提示词已优化，持久化完成 |
+| 前端基础架构 | 95% | 主要页面已实现，样式完善 |
+| AI 对话系统 | 85% | 对话记忆、流式输出正常 |
+| 用户认证系统 | 95% | 注册登录、会话管理完善 |
+| 文档上传 | 85% | PDF 解析、OCR 识别完成 |
+| 章节识别 | 80% | 基于目录的章节划分完善 |
+| 小节支持 | 75% | 数据模型和 UI 已实现 |
+| 教学风格系统 | 85% | L1-L5 提示词优化，持久化完成 |
+| LaTeX 渲染 | 90% | 数学公式支持完善 |
+| 错题本功能 | 70% | 基础功能实现，待优化 |
+| 仪表板 | 80% | 进度展示、数据可视化完成 |
+| 学习进度追踪 | 75% | 实时更新、历史记录正常 |
+| 能力评估 | 70% | 六维评估、雷达图展示 |
 
 ### 🚧 开发中功能
 
 | 模块 | 完成度 | 说明 |
 |------|--------|------|
-| 学习进度追踪 | 20% | 数据模型存在，UI 待实现 |
-| 错题本功能 | 10% | 页面已创建，功能未实现 |
-| 章节测试 | 30% | 基础结构存在，题目生成待完善 |
-| 章节解锁机制 | 0% | 未开始 |
+| 章节测试 | 50% | 基础结构完成，题目生成待完善 |
+| 章节解锁机制 | 30% | 逻辑设计中 |
 | 端到端测试 | 0% | 未开始 |
 
 ### 📝 待开发功能
 
-- [ ] 完整的学习进度追踪系统
-- [ ] 错题本数据持久化和复习功能
-- [ ] 能力雷达图实时更新
+- [ ] 完整的章节测试系统
 - [ ] 章节锁定/解锁机制
 - [ ] 单元测试和集成测试
 - [ ] 性能优化
 - [ ] 移动端适配优化
 - [ ] 暗色模式完善
+- [ ] 学习报告导出
 
 ---
 
@@ -196,15 +217,13 @@ npm run dev
 
 ### 严重问题
 
-- **PDF 章节识别不稳定**：部分教材的章节划分不准确
-- **OCR 识别效率低**：扫描版 PDF 处理时间过长
-- **教学风格切换不生效**：某些情况下切换风格后对话未立即更新
+- **章节测试功能未完成**：题目生成和评分逻辑需要完善
+- **章节解锁机制缺失**：无法控制学习顺序
 
 ### 中等问题
 
-- **错题本功能未完成**：页面存在但无法使用
-- **进度条不准确**：学习进度显示可能与实际不符
-- **能力雷达图不更新**：完成测试后图表未动态刷新
+- **错题本复习功能**：重做错题后状态更新不完善
+- **能力雷达图更新**：某些情况下未实时刷新
 
 ### 轻微问题
 
@@ -221,57 +240,82 @@ EduGenius/
 ├── api/                      # 后端 API 服务
 │   ├── app/
 │   │   ├── agents/          # LangGraph 智能体
+│   │   │   ├── nodes/       # 智能体节点
 │   │   │   ├── graphs/      # 工作流图
-│   │   │   ├── nodes/       # 智能体节点（导师、出题专家等）
 │   │   │   └── state/       # 状态管理
 │   │   ├── api/endpoints/   # API 端点
-│   │   ├── core/            # 核心功能（安全、配置）
-│   │   ├── db/              # 数据库连接
-│   │   ├── models/          # SQLAlchemy 数据模型
-│   │   └── services/        # 业务逻辑
-│   ├── main.py              # FastAPI 应用入口
+│   │   ├── core/            # 核心配置
+│   │   ├── db/              # 数据库
+│   │   ├── models/          # 数据模型
+│   │   ├── schemas/         # Pydantic 模式
+│   │   ├── services/        # 业务逻辑
+│   │   └── crud/            # 数据库操作
+│   ├── main.py              # FastAPI 入口
 │   └── requirements.txt     # Python 依赖
 │
 ├── src/                      # 前端应用
 │   ├── app/                 # Next.js App Router
 │   │   ├── page.tsx         # 首页
-│   │   ├── login/           # 登录页面
-│   │   ├── register/        # 注册页面
+│   │   ├── login/           # 登录
+│   │   ├── register/        # 注册
+│   │   ├── dashboard/       # 仪表板
 │   │   ├── study/           # 学习页面
-│   │   ├── dashboard/       # 仪表盘
-│   │   ├── mistakes/        # 错题本（未完成）
-│   │   └── quiz/            # 测试页面
+│   │   ├── quiz/            # 测试页面
+│   │   ├── mistakes/        # 错题本
+│   │   ├── upload/          # 上传页面
+│   │   └── documents/       # 文档管理
 │   ├── components/          # React 组件
-│   │   ├── chat/           # 聊天相关组件
+│   │   ├── ui/             # 通用 UI 组件
 │   │   ├── layout/         # 布局组件
-│   │   └── study/          # 学习相关组件
+│   │   ├── study/          # 学习组件
+│   │   ├── quiz/           # 测试组件
+│   │   └── progress/       # 进度组件
 │   ├── lib/                # 工具函数
 │   ├── styles/             # 全局样式
 │   └── types/              # TypeScript 类型
 │
 ├── CHANGELOG.md             # 更新日志
 ├── DEPLOYMENT_GUIDE.md      # 部署指南
-└── README.md               # 本文件
+├── DEBUGGING_GUIDE.md       # 调试指南
+├── LEARNING_PROGRESS_DESIGN.md  # 学习进度设计
+├── QUIZ_BUSINESS_PLAN.md    # 测验业务方案
+└── README.md                # 本文件
 ```
 
 ---
 
 ## 🔧 环境变量配置
 
-在 `api/.env` 文件中配置以下变量：
+### 后端 (`api/.env`)
 
 ```bash
 # 通义千问 API 密钥（必需）
 DASHSCOPE_API_KEY=your_dashscope_api_key_here
 
-# 数据库路径（可选，默认 ./edugenius.db）
-DATABASE_URL=sqlite:///./edugenius.db
+# JWT 密钥（必需）
+JWT_SECRET_KEY=your_secret_key_here
 
-# ChromaDB 路径（可选，默认 ./chroma_db）
-CHROMA_DB_PATH=./chroma_db
+# 数据库路径（可选）
+DATABASE_URL=sqlite+aiosqlite:///./edugenius.db
 
-# CORS 设置（可选）
-CORS_ORIGINS=http://localhost:3000,http://localhost:3001
+# ChromaDB 路径（可选）
+CHROMA_PERSIST_DIR=./chroma_db
+
+# 文件上传限制（可选）
+MAX_FILE_SIZE_MB=50
+```
+
+### 前端 (`.env.local`)
+
+```bash
+# API 地址
+NEXT_PUBLIC_API_URL=http://localhost:8000
+
+# 文件上传大小限制
+NEXT_PUBLIC_MAX_FILE_SIZE=52428800
+
+# Token 有效期
+NEXT_PUBLIC_TOKEN_EXPIRE_MINUTES=120
 ```
 
 ---
@@ -285,18 +329,30 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:3001
 #### 用户相关
 - `POST /api/users/register` - 用户注册
 - `POST /api/users/login` - 用户登录
-- `POST /api/users/assess-level` - 能力测评
-- `GET /api/users/{user_id}` - 获取用户信息
-- `PUT /api/users/{user_id}/teaching-style` - 更新教学风格
+- `POST /api/users/refresh` - 刷新 Token
+- `GET /api/users/me` - 获取当前用户信息
+- `PUT /api/users/me/teaching-style` - 更新教学风格
 
 #### 文档相关
 - `POST /api/documents/upload` - 上传教学文档
 - `GET /api/documents` - 获取文档列表
 - `GET /api/documents/{doc_id}/chapters` - 获取章节列表
+- `DELETE /api/documents/{doc_id}` - 删除文档
 
 #### 教学相关
-- `POST /api/teaching/chat` - AI 对话（SSE 流式）
-- `GET /api/teaching/history` - 获取对话历史
+- `POST /api/teaching/start` - 开始教学对话
+- `GET /api/teaching/chat` - 获取聊天消息 (SSE)
+- `DELETE /api/teaching/session` - 结束会话
+
+#### 测验相关
+- `GET /api/quiz/questions/{doc_id}/{chapter_number}` - 获取测验题目
+- `POST /api/quiz/submit` - 提交答案
+- `GET /api/quiz/results` - 获取结果
+
+#### 错题本
+- `GET /api/mistakes` - 获取错题列表
+- `POST /api/mistakes/{id}/retry` - 重做错题
+- `DELETE /api/mistakes/{id}` - 删除错题
 
 ---
 
@@ -326,25 +382,26 @@ CORS_ORIGINS=http://localhost:3000,http://localhost:3001
 
 ## 📝 开发路线图
 
-### v0.6.0 (进行中)
-- [x] 小节支持系统
-- [x] 教学风格优化
-- [ ] 实时学习进度追踪
-- [ ] 错题本功能实现
-- [ ] PDF 章节识别优化
-
-### v0.7.0 (计划中)
+### v1.1.0 (进行中)
+- [x] 错题本功能实现
+- [x] 仪表板完善
+- [x] 学习进度追踪
+- [x] LaTeX 渲染修复
+- [x] 对话记忆功能
 - [ ] 章节测试系统完善
-- [ ] 能力雷达图动态更新
+
+### v1.2.0 (计划中)
+- [ ] 章节锁定/解锁机制
+- [ ] 测验题目自动生成优化
 - [ ] 单元测试覆盖
 - [ ] 性能优化
 
-### v0.8.0 (计划中)
+### v1.3.0 (计划中)
 - [ ] 移动端适配优化
 - [ ] 暗色模式完善
 - [ ] PWA 支持
 
-### v1.0.0 (未来)
+### v2.0.0 (未来)
 - [ ] 多语言支持
 - [ ] 学习报告导出
 - [ ] 协作学习功能
@@ -361,10 +418,10 @@ A: 访问 [阿里云百炼平台](https://bailian.console.aliyun.com/) 申请开
 A: SQLite 数据库文件在 `api/edugenius.db`，ChromaDB 数据在 `api/chroma_db/`。
 
 ### Q: 为什么上传的 PDF 章节识别不准确？
-A: 这是已知问题，目前的章节识别依赖 PDF 目录，对于目录不规范的教材识别效果较差。正在优化中。
+A: 目前的章节识别依赖 PDF 目录，对于目录不规范的教材识别效果较差。建议使用有清晰目录结构的 PDF。
 
-### Q: 错题本功能什么时候能完成？
-A: 错题本的基础架构已搭建，但功能实现还需要时间。预计在 v0.6 版本完成。
+### Q: LaTeX 公式显示不正常怎么办？
+A: 请查看 [DEBUGGING_GUIDE.md](DEBUGGING_GUIDE.md) 中的 LaTeX 渲染调试步骤。
 
 ### Q: 如何参与开发？
 A: 欢迎 Fork 并提交 PR！在提交前请先查看 [已知问题](#-已知问题) 部分。

@@ -10,7 +10,7 @@
 
 ### 系统要求
 - **操作系统**: macOS / Linux / Windows (WSL2)
-- **Python**: 3.9+
+- **Python**: 3.10+
 - **Node.js**: 18+
 - **内存**: 至少 4GB RAM
 - **磁盘**: 至少 2GB 可用空间
@@ -18,7 +18,7 @@
 ### 必需工具
 ```bash
 # 检查 Python 版本
-python --version  # 应该 >= 3.9
+python --version  # 应该 >= 3.10
 
 # 检查 Node.js 版本
 node --version    # 应该 >= 18
@@ -47,6 +47,11 @@ venv\Scripts\activate
 ```bash
 pip install -r requirements.txt
 ```
+
+**注意**: 如果遇到 PaddleOCR 相关依赖问题，请确保：
+- NumPy 版本 < 2.0（requirements.txt 中已指定）
+- PaddlePaddle 版本为 2.6.2
+- PaddleOCR 版本为 2.7.0
 
 ### 3. 配置环境变量
 ```bash
@@ -77,8 +82,10 @@ ACCESS_TOKEN_EXPIRE_MINUTES=120
 # 创建数据库表
 python init_db.py
 
-# 创建问题表（如果需要）
-python create_questions_table.py
+# 应用数据库迁移
+python migrations/add_indexes.py
+python migrations/add_subsection_to_questions.py
+python migrations/add_refresh_token.py
 ```
 
 ### 5. 启动后端服务
@@ -145,7 +152,7 @@ npm start
 ### 1. 健康检查
 ```bash
 # 后端健康检查
-curl http://localhost:8000/api/documents/health
+curl http://localhost:8000/health
 
 # 预期响应
 {"status":"healthy","service":"EduGenius API"}
@@ -154,18 +161,19 @@ curl http://localhost:8000/api/documents/health
 ### 2. 注册测试账户
 1. 访问 http://localhost:3000/register
 2. 填写注册信息
-3. 选择导师风格
+3. 选择教学风格（L1-L5）
 4. 点击"创建账户"
 
 ### 3. 上传测试文档
-1. 登录后访问 http://localhost:3000/documents/upload
-2. 上传一个 PDF 或 TXT 文件
-3. 等待处理完成
+1. 登录后访问仪表板
+2. 点击"上传文档"
+3. 选择一个 PDF 文件（建议使用有清晰目录结构的教材）
+4. 等待处理完成
 
 ### 4. 开始学习
-1. 访问 http://localhost:3000/study
-2. 选择章节
-3. 开始对话学习
+1. 在文档列表中选择上传的文档
+2. 选择要学习的章节
+3. 开始与 AI 导师对话
 
 ---
 
@@ -174,9 +182,19 @@ curl http://localhost:8000/api/documents/health
 ### 1. 创建 Dockerfile（后端）
 ```dockerfile
 # api/Dockerfile
-FROM python:3.9-slim
+FROM python:3.10-slim
 
 WORKDIR /app
+
+# 安装系统依赖
+RUN apt-get update && apt-get install -y \
+    libgomp1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgl1-mesa-glx \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -222,6 +240,7 @@ services:
     volumes:
       - ./api/edugenius.db:/app/edugenius.db
       - ./api/chroma_db:/app/chroma_db
+    restart: unless-stopped
 
   frontend:
     build: .
@@ -231,6 +250,7 @@ services:
       - NEXT_PUBLIC_API_URL=http://backend:8000
     depends_on:
       - backend
+    restart: unless-stopped
 ```
 
 ### 4. 启动服务
@@ -278,7 +298,7 @@ sudo ufw enable
 
 #### Nginx 配置示例
 ```nginx
-# /etc/nginx/sites-available/edugenius
+# /etc/nginx/sites-available/edugenius-api
 server {
     listen 80;
     server_name api.yourdomain.com;
@@ -289,9 +309,17 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+
+        # SSE 支持
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_set_header Connection '';
+        proxy_http_version 1.1;
+        chunked_transfer_encoding off;
     }
 }
 
+# /etc/nginx/sites-available/edugenius
 server {
     listen 80;
     server_name yourdomain.com;
@@ -340,7 +368,7 @@ pm2 startup
 ### 1. 日志配置
 ```bash
 # 后端日志
-tail -f /tmp/edugenius_backend.log
+tail -f api/logs/app.log
 
 # PM2 日志
 pm2 logs edugenius-api
@@ -381,7 +409,7 @@ pip list
 cat .env.local
 
 # 检查网络连接
-curl http://localhost:8000/api/documents/health
+curl http://localhost:8000/health
 
 # 检查 CORS 配置
 # 在 api/main.py 中确认 CORS 设置
@@ -390,23 +418,32 @@ curl http://localhost:8000/api/documents/health
 #### 3. 数据库错误
 ```bash
 # 重新初始化数据库
-rm edugenius.db
+rm api/edugenius.db
 python init_db.py
 
 # 检查数据库文件权限
-ls -la edugenius.db
+ls -la api/edugenius.db
 ```
 
 #### 4. 文件上传失败
 ```bash
 # 检查文件大小限制
-# 在 .env 中调整 MAX_FILE_SIZE
+# 在 .env 中调整 MAX_FILE_SIZE_MB
 
 # 检查磁盘空间
 df -h
 
 # 检查临时目录权限
 ls -la /tmp
+```
+
+#### 5. OCR 识别问题
+```bash
+# 检查 PaddleOCR 安装
+python -c "from paddleocr import PaddleOCR; print('OK')"
+
+# 重新安装 OCR 依赖
+pip install --upgrade paddleocr==2.7.0 paddlepaddle==2.6.2
 ```
 
 ---
@@ -464,11 +501,20 @@ tar -czf backups/chroma_$(date +%Y%m%d).tar.gz api/chroma_db/
 ## 🆘 获取帮助
 
 - **文档**: 查看项目 README.md
+- **调试**: 参考 DEBUGGING_GUIDE.md
 - **问题**: 提交 GitHub Issue
-- **讨论**: 加入社区讨论
 
 ---
 
-**文档版本**: v1.0.0
-**更新时间**: 2026-01-29
+## 📚 相关文档
+
+- [README.md](README.md) - 项目概述
+- [DEBUGGING_GUIDE.md](DEBUGGING_GUIDE.md) - 调试指南
+- [LEARNING_PROGRESS_DESIGN.md](LEARNING_PROGRESS_DESIGN.md) - 学习进度设计
+- [QUIZ_BUSINESS_PLAN.md](QUIZ_BUSINESS_PLAN.md) - 测验业务方案
+
+---
+
+**文档版本**: v1.1.0
+**更新时间**: 2026-02-03
 **适用版本**: EduGenius v1.0.0+

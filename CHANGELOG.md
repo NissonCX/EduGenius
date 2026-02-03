@@ -1,6 +1,25 @@
 # 更新日志
 
-## [Unreleased]
+## [2026-02-03] - 文档更新和项目整理
+
+### 变更 (Changed)
+- 更新 README.md，反映最新的项目状态和功能
+- 更新 DEPLOYMENT_GUIDE.md，添加 Docker 和生产部署说明
+- 更新 LEARNING_PROGRESS_DESIGN.md，标记已实现功能
+- 更新 QUIZ_BUSINESS_PLAN.md，反映当前测试功能状态
+- 更新 DEBUGGING_GUIDE.md，确认问题已修复
+
+### 移除 (Removed)
+- 删除多余的进度和总结文档（9个文件）
+- 清理临时工作文档
+
+### 文档 (Documentation)
+- 所有文档更新到 v1.1.0 版本
+- 统一文档格式和版本信息
+
+---
+
+## [2026-02-01] - 功能完善和错误修复
 
 ## [2026-01-30] - PaddleOCR 集成与功能测试
 
