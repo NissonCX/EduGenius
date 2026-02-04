@@ -439,11 +439,17 @@ async def register_user(
     await db.commit()
     await db.refresh(new_user)
 
-    # 生成 token 并返回
-    token = create_token_for_user(new_user.id, new_user.email)
+    # 生成 Access Token 和 Refresh Token
+    access_token = create_token_for_user(new_user.id, new_user.email)
+    refresh_token = create_refresh_token({"sub": new_user.email, "user_id": new_user.id})
+
+    # 保存 refresh token 到数据库
+    new_user.refresh_token = refresh_token
+    await db.commit()
 
     return {
-        "access_token": token,
+        "access_token": access_token,
+        "refresh_token": refresh_token,
         "token_type": "bearer",
         "user_id": new_user.id,
         "email": new_user.email,

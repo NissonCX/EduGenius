@@ -6,7 +6,6 @@ import { motion } from 'framer-motion'
 import { CompetencyRadar } from '@/components/charts/CompetencyRadar'
 import { KnowledgeConstellation } from '@/components/charts/KnowledgeConstellation'
 import { StudyCalendar, StudyCurve } from '@/components/progress'
-import { fetchCompetencyData, fetchKnowledgeGraph } from '@/lib/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { getApiUrl } from '@/lib/config'
 
@@ -182,6 +181,48 @@ export default function DashboardPage() {
       console.error('Error fetching mistake stats:', error)
     }
     return null
+  }
+
+  // 获取能力评估数据
+  const fetchCompetencyData = async (userId: number, documentId: number, token?: string) => {
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+
+      const response = await fetch(
+        getApiUrl(`/api/users/${userId}/history`),
+        { headers }
+      )
+
+      if (response.ok) {
+        const data = await response.json()
+        return data.competency_scores || null
+      }
+    } catch (error) {
+      console.error('Error fetching competency data:', error)
+    }
+    return null
+  }
+
+  // 获取知识图谱数据（暂时返回默认数据）
+  const fetchKnowledgeGraph = async (userId: number, documentId: number, chapter: number, token?: string) => {
+    // TODO: 后端需要实现知识图谱 API
+    // 暂时返回默认数据
+    return {
+      nodes: [
+        { id: 1, label: '第一章', group: 'chapter' },
+        { id: 2, label: '第二章', group: 'chapter' },
+        { id: 3, label: '第三章', group: 'chapter' },
+      ],
+      links: [
+        { source: 1, target: 2 },
+        { source: 2, target: 3 },
+      ]
+    }
   }
 
   const handleNodeClick = (node: any) => {

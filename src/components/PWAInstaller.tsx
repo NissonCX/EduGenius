@@ -80,7 +80,6 @@ export default function PWAInstaller() {
                 </svg>
                 分享
               </span>
-              </span>
             </div>
             <button
               onClick={() => setShowPrompt(false)}
