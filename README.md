@@ -107,56 +107,79 @@ PaddleOCR           # PDF 文字识别
 - Python >= 3.10
 - 通义千问 API Key（必需）
 
-### 1. 克隆项目
+### 方式 1: 一键启动（推荐）
 
 ```bash
 git clone https://github.com/NissonCX/EduGenius.git
 cd EduGenius
+./start-dev.sh
 ```
 
-### 2. 后端设置
+这将自动完成：
+- ✅ 检查系统环境
+- ✅ 安装前后端依赖
+- ✅ 配置环境变量
+- ✅ 初始化数据库
+- ✅ 执行数据库迁移
+- ✅ 启动前后端服务
+
+### 方式 2: 手动启动
+
+**详细步骤请查看 [启动指南](SETUP_GUIDE.md)**
 
 ```bash
-# 进入后端目录
-cd api
+# 1. 克隆项目
+git clone https://github.com/NissonCX/EduGenius.git
+cd EduGenius
 
-# 创建虚拟环境
+# 2. 安装前端依赖
+npm install
+
+# 3. 安装后端依赖
+cd api
 python3 -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
-
-# 安装依赖
 pip install -r requirements.txt
 
-# 配置环境变量
+# 4. 配置环境变量
 cp .env.example .env
 # 编辑 .env 文件，填入你的 DASHSCOPE_API_KEY（必需）
 
-# 初始化数据库
-python init_db.py
+# 5. 初始化数据库
+python3 init_db.py
 
-# 启动后端服务
+# 6. 执行数据库迁移（重要！）
+cd migrations
+python3 add_refresh_token.py
+python3 add_subsection_to_questions.py
+
+# 7. 启动后端服务
+cd ..
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-后端将运行在 http://localhost:8000
-- API 文档：http://localhost:8000/docs
-- 健康检查：http://localhost:8000/health
+**新开终端启动前端:**
+```bash
+cd EduGenius
+npm run dev
+```
 
-### 3. 前端设置
+### 访问应用
+
+- 🌐 前端: http://localhost:3000
+- 🔧 后端 API: http://localhost:8000
+- 📚 API 文档: http://localhost:8000/docs
+- ❤️ 健康检查: http://localhost:8000/health
+
+### 数据库迁移（重要！）
+
+如果遇到数据库相关错误，请查看 [迁移指南](MIGRATION_GUIDE.md) 或执行：
 
 ```bash
-# 新开一个终端，进入项目根目录
-cd EduGenius
-
-# 安装依赖
-npm install
-
-# 配置环境变量
-cp .env.local.example .env.local
-# 编辑 .env.local，设置 NEXT_PUBLIC_API_URL=http://localhost:8000
-
-# 启动开发服务器
-npm run dev
+cd api/migrations
+python3 add_refresh_token.py           # 修复登录问题
+python3 add_subsection_to_questions.py # 修复历史对话问题
+```
 ```
 
 前端将运行在 http://localhost:3000
