@@ -1029,3 +1029,241 @@ async def update_teaching_style(
         "message": "教学风格已更新",
         "teaching_style": teaching_style
     }
+
+
+# ============ 密码找回功能 ============
+class PasswordResetRequest(BaseModel):
+    """密码重置请求"""
+    email: str
+
+
+class VerifyTokenRequest(BaseModel):
+    """验证令牌请求"""
+    token: str
+
+
+class ResetPasswordRequest(BaseModel):
+    """重置密码请求"""
+    token: str
+    new_password: str
+
+
+@router.post("/password-reset/request")
+async def request_password_reset(
+    request: PasswordResetRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    请求密码重置
+
+    1. 验证邮箱是否存在
+    2. 生成重置令牌
+    3. 保存到数据库
+    4. 发送重置邮件
+    """
+    from app.models.password_reset import PasswordReset
+    from app.core.email import get_email_service
+    from datetime import datetime, timedelta
+    from app.core.config import settings
+
+    # 验证邮箱格式
+    if not request.email or "@" not in request.email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="邮箱格式不正确"
+        )
+
+    # 检查邮箱是否注册（不暴露用户是否存在）
+    result = await db.execute(
+        select(User).where(User.email == request.email)
+    )
+    user = result.scalar_one_or_none()
+
+    if not user:
+        # 为了安全，即使邮箱不存在也返回成功消息
+        # 这样可以防止枚举攻击
+        return {
+            "message": "如果该邮箱已注册，您将收到密码重置邮件",
+            "status": "success"
+        }
+
+    # 生成重置令牌
+    from app.core.security import get_password_hash
+    email_service = await get_email_service()
+    reset_token = email_service.generate_reset_token()
+
+    # 计算过期时间
+    expires_at = datetime.utcnow() + timedelta(
+        hours=settings.PASSWORD_RESET_TOKEN_EXPIRE_HOURS
+    )
+
+    # 保存到数据库
+    password_reset = PasswordReset(
+        email=request.email,
+        token=get_password_hash(reset_token),  # 哈希令牌存储
+        expires_at=expires_at
+    )
+    db.add(password_reset)
+    await db.commit()
+
+    # 发送重置邮件
+    email_sent = await email_service.send_password_reset_email(
+        request.email,
+        reset_token
+    )
+
+    if email_sent:
+        return {
+            "message": "密码重置邮件已发送，请检查您的邮箱",
+            "status": "success",
+            "expires_in_hours": settings.PASSWORD_RESET_TOKEN_EXPIRE_HOURS
+        }
+    else:
+        # 邮件发送失败，但为了用户体验仍然返回成功
+        # 实际场景中应该记录日志并通知管理员
+        logger.warning(f"密码重置邮件发送失败: {request.email}")
+        return {
+            "message": "密码重置邮件已发送（如果邮箱存在）",
+            "status": "success"
+        }
+
+
+@router.post("/password-reset/verify")
+async def verify_reset_token(
+    request: VerifyTokenRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    验证重置令牌是否有效
+
+    用于前端验证后显示密码重置表单
+    """
+    from app.models.password_reset import PasswordReset
+    from app.core.security import get_password_hash
+    from datetime import datetime
+
+    if not request.token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="令牌不能为空"
+        )
+
+    # 哈希令牌进行查询
+    token_hash = get_password_hash(request.token)
+
+    result = await db.execute(
+        select(PasswordReset).where(
+            PasswordReset.token == token_hash
+        )
+    )
+    reset_record = result.scalar_one_or_none()
+
+    # 验证令牌
+    if not reset_record:
+        return {
+            "valid": False,
+            "message": "无效的令牌"
+        }
+
+    if reset_record.used:
+        return {
+            "valid": False,
+            "message": "令牌已被使用"
+        }
+
+    if reset_record.expires_at < datetime.utcnow():
+        return {
+            "valid": False,
+            "message": "令牌已过期"
+        }
+
+    # 令牌有效
+    return {
+        "valid": True,
+        "message": "令牌有效",
+        "email": reset_record.email
+    }
+
+
+@router.post("/password-reset/confirm")
+async def confirm_password_reset(
+    request: ResetPasswordRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    确认密码重置
+
+    验证令牌并更新用户密码
+    """
+    from app.models.password_reset import PasswordReset
+    from app.core.security import get_password_hash, verify_password
+    from app.core.constants import PASSWORD_REQUIREMENTS
+    from datetime import datetime
+
+    if not request.token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="令牌不能为空"
+        )
+
+    # 验证新密码
+    is_valid, error_msg = validate_password(request.new_password)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_msg
+        )
+
+    # 查找重置记录
+    token_hash = get_password_hash(request.token)
+    result = await db.execute(
+        select(PasswordReset).where(
+            PasswordReset.token == token_hash
+        )
+    )
+    reset_record = result.scalar_one_or_none()
+
+    if not reset_record:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="无效的令牌"
+        )
+
+    if reset_record.used:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="令牌已被使用"
+        )
+
+    if reset_record.expires_at < datetime.utcnow():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="令牌已过期"
+        )
+
+    # 获取用户
+    user_result = await db.execute(
+        select(User).where(User.email == reset_record.email)
+    )
+    user = user_result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在"
+        )
+
+    # 更新密码
+    user.password = get_password_hash(request.new_password)
+    
+    # 标记令牌已使用
+    reset_record.used = 1
+
+    await db.commit()
+
+    logger.info(f"✅ 用户 {user.id} ({user.email}) 密码已重置")
+
+    return {
+        "message": "密码重置成功，请使用新密码登录",
+        "status": "success"
+    }

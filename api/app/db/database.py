@@ -51,6 +51,7 @@ async def init_db():
     """
     from app.models.document import Base
     from app.models.subsection import subsections_table
+    from app.models.password_reset import PasswordReset
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
