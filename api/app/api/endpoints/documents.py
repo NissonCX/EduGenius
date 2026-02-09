@@ -201,10 +201,14 @@ async def upload_document(
 
         # 处理新文档
         file_type = file.filename.split(".")[-1].lower()
-        if file_type not in ["pdf", "txt"]:
+
+        # 检查文件类型是否支持
+        from app.services.document_extractors import DocumentExtractorFactory
+        if not DocumentExtractorFactory.is_supported(file_type):
+            supported_formats = ", ".join(DocumentExtractorFactory.supported_formats())
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"不支持的文件类型: {file_type}。支持的格式: pdf, txt"
+                detail=f"不支持的文件类型: .{file_type}。支持的格式: {supported_formats}"
             )
 
         # 创建数据库记录（必须在处理之前创建，以便获取document_id）
