@@ -72,6 +72,11 @@ class Settings:
     CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "1000"))
     CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "200"))
 
+    # OCR 配置
+    OCR_TEXT_RATIO_THRESHOLD: float = float(os.getenv("OCR_TEXT_RATIO_THRESHOLD", "0.1"))
+    OCR_CONFIDENCE_THRESHOLD: float = float(os.getenv("OCR_CONFIDENCE_THRESHOLD", "0.6"))
+    OCR_MAX_CONCURRENT: int = int(os.getenv("OCR_MAX_CONCURRENT", "2"))
+
     def validate(self) -> bool:
         """验证配置是否有效"""
         if not self.DASHSCOPE_API_KEY:
