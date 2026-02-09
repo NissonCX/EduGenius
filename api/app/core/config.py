@@ -22,6 +22,14 @@ class Settings:
     # 数据库配置
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./edugenius.db?check_same_thread=False")
 
+    # Redis 缓存配置
+    REDIS_HOST: str = os.getenv("REDIS_HOST", "localhost")
+    REDIS_PORT: int = int(os.getenv("REDIS_PORT", "6379"))
+    REDIS_DB: int = int(os.getenv("REDIS_DB", "0"))
+    REDIS_PASSWORD: str = os.getenv("REDIS_PASSWORD", "")
+    REDIS_ENABLED: bool = os.getenv("REDIS_ENABLED", "true").lower() == "true"
+    REDIS_URL: str = os.getenv("REDIS_URL", "")
+
     # ChromaDB 配置
     CHROMA_PERSIST_DIR: str = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
 

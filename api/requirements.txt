@@ -9,6 +9,10 @@ sqlalchemy==2.0.36
 aiosqlite==0.20.0
 greenlet==3.3.1
 
+# Caching
+redis==5.2.1
+hiredis==2.4.0  # C parser for redis
+
 # Document processing
 PyPDF2==3.0.1
 python-docx==1.1.2

@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import os
+import asyncio
 
 from app.db.database import init_db
 from app.api.endpoints.documents import router as documents_router
@@ -17,6 +18,7 @@ quiz_ai_router = quiz_ai.router
 from app.api.endpoints.mistakes import router as mistakes_router
 from app.core.errors import register_exception_handlers
 from app.core.logging_config import setup_logging, get_logger
+from app.core.redis_client import redis_client
 
 # 初始化日志系统
 log_level = os.getenv("LOG_LEVEL", "INFO")
@@ -35,7 +37,15 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Initializing EduGenius Backend...")
     await init_db()
     logger.info("✅ Database initialized successfully")
-    
+
+    # 🔥 初始化 Redis 缓存
+    from app.core.redis_client import init_redis
+    redis_ok = await init_redis()
+    if redis_ok:
+        logger.info("✅ Redis 缓存已启用")
+    else:
+        logger.info("⚠️ Redis 缓存未启用，将使用数据库直接查询")
+
     # 启动 Session 清理任务
     from app.api.endpoints.teaching import start_session_cleanup_task
     cleanup_task = start_session_cleanup_task()
@@ -45,7 +55,12 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("👋 Shutting down EduGenius Backend...")
-    
+
+    # 🔥 关闭 Redis 连接
+    from app.core.redis_client import close_redis
+    await close_redis()
+    logger.info("✅ Redis 连接已关闭")
+
     # 停止清理任务
     if cleanup_task:
         cleanup_task.cancel()
@@ -113,13 +128,24 @@ async def root():
 @app.get("/health")
 async def health():
     """Health check endpoint."""
+    # 检查 Redis 状态
+    redis_status = "disconnected"
+    if redis_client:
+        try:
+            is_connected = await redis_client.is_connected()
+            redis_status = "connected" if is_connected else "disconnected"
+        except:
+            redis_status = "error"
+
     return {
         "status": "healthy",
         "service": "EduGenius Backend",
         "database": "connected",
+        "redis": redis_status,
         "chroma_db": "initialized",
         "langgraph": "ready",
-        "agents": ["Architect", "Examiner", "Tutor"]
+        "agents": ["Architect", "Examiner", "Tutor"],
+        "cache": "enabled" if redis_status == "connected" else "disabled"
     }
 
 
