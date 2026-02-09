@@ -208,20 +208,40 @@ export default function DashboardPage() {
     return null
   }
 
-  // 获取知识图谱数据（暂时返回默认数据）
+  // 获取知识图谱数据（从真实 API 获取）
   const fetchKnowledgeGraph = async (userId: number, documentId: number, chapter: number, token?: string) => {
-    // TODO: 后端需要实现知识图谱 API
-    // 暂时返回默认数据
-    return {
-      nodes: [
-        { id: 1, label: '第一章', group: 'chapter' },
-        { id: 2, label: '第二章', group: 'chapter' },
-        { id: 3, label: '第三章', group: 'chapter' },
-      ],
-      links: [
-        { source: 1, target: 2 },
-        { source: 2, target: 3 },
-      ]
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+
+      const response = await fetch(
+        getApiUrl(`/api/knowledge/graph/${documentId}?user_id=${userId}`),
+        { headers }
+      )
+
+      if (response.ok) {
+        const data = await response.json()
+        return data
+      } else {
+        console.warn('知识图谱 API 暂未返回数据，使用默认值')
+        // 返回默认数据作为降级处理
+        return {
+          nodes: [],
+          links: [],
+          metadata: { document_id: documentId, user_id: userId, stats: {} }
+        }
+      }
+    } catch (error) {
+      console.error('获取知识图谱失败:', error)
+      return {
+        nodes: [],
+        links: [],
+        metadata: { document_id: documentId, user_id: userId, stats: {} }
+      }
     }
   }
 

@@ -16,6 +16,7 @@ from app.api.endpoints.quiz import router as quiz_router
 from app.api.endpoints import quiz_ai
 quiz_ai_router = quiz_ai.router
 from app.api.endpoints.mistakes import router as mistakes_router
+from app.api.endpoints.knowledge import router as knowledge_router
 from app.core.errors import register_exception_handlers
 from app.core.logging_config import setup_logging, get_logger
 from app.core.redis_client import redis_client
@@ -100,6 +101,7 @@ app.include_router(users_router)
 app.include_router(quiz_router)
 app.include_router(quiz_ai_router)  # 新增：AI出题路由
 app.include_router(mistakes_router)
+app.include_router(knowledge_router)  # 新增：知识图谱路由
 
 
 @app.get("/")
@@ -114,13 +116,16 @@ async def root():
             "teaching": "/api/teaching",
             "users": "/api/users",
             "quiz": "/api/quiz",
+            "knowledge": "/api/knowledge",
             "health": "/health"
         },
         "features": {
             "md5_deduplication": "文档 MD5 去重",
             "multi_agent_teaching": "多智能体教学系统",
             "adaptive_levels": "L1-L5 自适应等级",
-            "sse_streaming": "SSE 流式输出"
+            "sse_streaming": "SSE 流式输出",
+            "knowledge_graph": "知识图谱可视化",
+            "redis_cache": "Redis 缓存优化"
         }
     }
 
