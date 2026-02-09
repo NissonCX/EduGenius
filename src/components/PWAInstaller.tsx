@@ -9,6 +9,13 @@ import { useEffect, useState } from 'react'
 import { Download, X } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
+// 扩展 Navigator 类型以支持 standalone 属性（iOS Safari）
+declare global {
+  interface Navigator {
+    standalone?: boolean
+  }
+}
+
 export default function PWAInstaller() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
   const [showPrompt, setShowPrompt] = useState(false)

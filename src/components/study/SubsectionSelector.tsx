@@ -24,6 +24,10 @@ interface Subsection {
   time_spent_minutes: number
 }
 
+interface SubsectionsListResponse {
+  subsections: Subsection[]
+}
+
 interface SubsectionSelectorProps {
   documentId: number
   chapterId: number
@@ -62,7 +66,7 @@ export const SubsectionSelector = React.memo(function SubsectionSelector({
     try {
       console.log(`[SubsectionSelector] 加载小节: document=${documentId}, chapter=${chapterId}`)
       const cacheKey = generateCacheKey('subsections', { documentId, chapterId })
-      const data = await fetchWithCache(
+      const data = await fetchWithCache<SubsectionsListResponse>(
         getApiUrl(`/api/documents/${documentId}/chapters/${chapterId}/subsections`),
         {
           method: 'GET',

@@ -26,7 +26,7 @@ interface AuthContextType extends AuthState {
   updateUser: (updates: Partial<User>) => void
   getAuthHeaders: (contentType?: boolean) => HeadersInit
   checkAuth: () => boolean
-  refreshToken: () => Promise<boolean>
+  refreshAccessToken: () => Promise<boolean>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -297,7 +297,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     updateUser,
     getAuthHeaders,
     checkAuth,
-    refreshToken: refreshTokenFunc
+    refreshAccessToken: refreshTokenFunc
   }), [
     authState.user,
     authState.token,

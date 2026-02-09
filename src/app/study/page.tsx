@@ -29,6 +29,17 @@ interface Document {
   processing_status: string
 }
 
+interface DocumentsListResponse {
+  documents: Document[]
+}
+
+interface ChaptersListResponse {
+  document_id: number
+  document_title: string
+  total_chapters: number
+  chapters: any[]
+}
+
 interface Chapter {
   chapter_number: number
   chapter_title: string
@@ -132,7 +143,7 @@ function StudyPageContent() {
     console.log('🔄 [Study] 加载文档列表...')
     try {
       const cacheKey = generateCacheKey('documents', {})
-      const data = await fetchWithCache(
+      const data = await fetchWithCache<DocumentsListResponse>(
         getApiUrl('/api/documents/list'),
         {
           method: 'GET',
@@ -155,7 +166,7 @@ function StudyPageContent() {
   const loadChapters = async (documentId: number) => {
     try {
       const cacheKey = generateCacheKey('chapters', { documentId })
-      const data = await fetchWithCache(
+      const data = await fetchWithCache<ChaptersListResponse>(
         getApiUrl(`/api/documents/${documentId}/chapters`),
         {
           method: 'GET',
