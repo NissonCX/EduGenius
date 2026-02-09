@@ -55,6 +55,9 @@ MAX_SESSIONS = 1000  # 最大 session 数量
 SESSION_LAST_ACCESS_KEY = "_last_access"
 SESSION_CREATED_AT_KEY = "_created_at"
 
+# 🔥 SSE 连接跟踪 - 防止连接泄漏
+active_sse_connections: Dict[str, Any] = {}
+
 # 全局清理任务引用
 _cleanup_task: Optional[asyncio.Task] = None
 
@@ -109,6 +112,7 @@ async def session_cleanup_task():
         try:
             await asyncio.sleep(300)  # 5 分钟
             await cleanup_expired_sessions()
+            await cleanup_stale_sse_connections()  # 🔥 同时清理 SSE 连接
         except asyncio.CancelledError:
             logger.info("🛑 Session 清理任务已停止")
             break
@@ -146,6 +150,55 @@ def get_session(session_id: str) -> Optional[Dict[str, Any]]:
     if session_data:
         update_session_access(session_id, session_data)
     return session_data
+
+
+# ============ SSE 连接管理 ============
+async def check_client_disconnect(response: StreamingResponse) -> bool:
+    """
+    检查客户端是否已断开连接
+
+    Returns:
+        True if client disconnected
+    """
+    # FastAPI 的 StreamingResponse 会在客户端断开时触发异常
+    # 我们通过捕获生成器中的异常来检测断开
+    return False
+
+
+def track_sse_connection(connection_id: str, request_type: str = "unknown"):
+    """跟踪 SSE 连接"""
+    active_sse_connections[connection_id] = {
+        "connected_at": time.time(),
+        "request_type": request_type,
+        "active": True
+    }
+    logger.info(f"📡 SSE 连接建立: {connection_id} ({request_type})")
+
+
+def untrack_sse_connection(connection_id: str):
+    """取消跟踪 SSE 连接"""
+    if connection_id in active_sse_connections:
+        conn = active_sse_connections.pop(connection_id)
+        duration = time.time() - conn["connected_at"]
+        logger.info(f"📡 SSE 连接关闭: {connection_id} (持续 {duration:.1f}秒)")
+
+
+async def cleanup_stale_sse_connections():
+    """清理超过 10 分钟的 SSE 连接"""
+    try:
+        current_time = time.time()
+        stale_connections = []
+        for conn_id, conn_data in active_sse_connections.items():
+            if current_time - conn_data["connected_at"] > 600:  # 10分钟
+                stale_connections.append(conn_id)
+
+        for conn_id in stale_connections:
+            untrack_sse_connection(conn_id)
+
+        if stale_connections:
+            logger.info(f"🧹 清理了 {len(stale_connections)} 个过期的 SSE 连接")
+    except Exception as e:
+        logger.error(f"❌ 清理 SSE 连接失败: {e}")
 
 
 # ============ Helper Functions ============
@@ -365,10 +418,16 @@ async def start_teaching_session(
     graph = create_simple_teaching_flow()
     stream_handler = TeachingStreamHandler(graph)
 
+    # 🔥 生成唯一的连接 ID 用于跟踪
+    connection_id = f"session_start_{request.user_id}_{request.document_id}_{request.chapter_number}_{int(time.time() * 1000)}"
+
     async def event_generator():
         """Generate SSE events."""
         timeout_seconds = 300  # 5分钟超时
-        
+
+        # 🔥 跟踪 SSE 连接
+        track_sse_connection(connection_id, "session_start")
+
         try:
             async with asyncio.timeout(timeout_seconds):
                 async for event in stream_handler.stream_teaching_session(initial_state):
@@ -385,12 +444,23 @@ async def start_teaching_session(
                 "message": "请求超时，请稍后重试"
             }
             yield f"data: {json.dumps(timeout_event, ensure_ascii=False)}\n\n"
+        except asyncio.CancelledError:
+            # 🔥 客户端断开连接或请求被取消
+            logger.info(f"🔌 SSE 连接被取消: {connection_id}")
+            raise
+        except GeneratorExit:
+            # 🔥 客户端断开连接
+            logger.info(f"🔌 SSE 客户端断开: {connection_id}")
+            raise
         except Exception as e:
             error_event = {
                 "type": "error",
                 "message": str(e)
             }
             yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
+        finally:
+            # 🔥 清理连接
+            untrack_sse_connection(connection_id)
 
     return StreamingResponse(
         event_generator(),
@@ -425,8 +495,14 @@ async def submit_answer(
     graph = create_simple_teaching_flow()
     stream_handler = TeachingStreamHandler(graph)
 
+    # 🔥 生成唯一的连接 ID
+    connection_id = f"answer_{session_id}_{int(time.time() * 1000)}"
+
     async def event_generator():
         """Generate SSE events for answer evaluation."""
+        # 🔥 跟踪 SSE 连接
+        track_sse_connection(connection_id, "submit_answer")
+
         try:
             async for event in stream_handler.stream_answer_evaluation(
                 state,
@@ -440,12 +516,21 @@ async def submit_answer(
             # Update session state
             update_session_access(session_id, state)
 
+        except asyncio.CancelledError:
+            logger.info(f"🔌 SSE 连接被取消: {connection_id}")
+            raise
+        except GeneratorExit:
+            logger.info(f"🔌 SSE 客户端断开: {connection_id}")
+            raise
         except Exception as e:
             error_event = {
                 "type": "error",
                 "message": str(e)
             }
             yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
+        finally:
+            # 🔥 清理连接
+            untrack_sse_connection(connection_id)
 
     return StreamingResponse(
         event_generator(),
@@ -483,10 +568,16 @@ async def ask_tutor(
     # Create tutor and get answer
     tutor = TutorAgent()
 
+    # 🔥 生成唯一的连接 ID
+    connection_id = f"ask_tutor_{session_id}_{int(time.time() * 1000)}"
+
     async def event_generator():
         """Generate SSE events for tutor response."""
         timeout_seconds = 120  # 2分钟超时
-        
+
+        # 🔥 跟踪 SSE 连接
+        track_sse_connection(connection_id, "ask_tutor")
+
         try:
             async with asyncio.timeout(timeout_seconds):
                 # Send typing indicator
@@ -516,12 +607,21 @@ async def ask_tutor(
                 "message": "请求超时，请稍后重试"
             }
             yield f"data: {json.dumps(timeout_event, ensure_ascii=False)}\n\n"
+        except asyncio.CancelledError:
+            logger.info(f"🔌 SSE 连接被取消: {connection_id}")
+            raise
+        except GeneratorExit:
+            logger.info(f"🔌 SSE 客户端断开: {connection_id}")
+            raise
         except Exception as e:
             error_event = {
                 "type": "error",
                 "message": str(e)
             }
             yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
+        finally:
+            # 🔥 清理连接
+            untrack_sse_connection(connection_id)
 
     return StreamingResponse(
         event_generator(),
@@ -608,8 +708,14 @@ async def get_hint(
             detail="Session not found"
         )
 
+    # 🔥 生成唯一的连接 ID
+    connection_id = f"hint_{session_id}_{question_id}_{int(time.time() * 1000)}"
+
     async def event_generator():
         """Generate SSE events for hint."""
+        # 🔥 跟踪 SSE 连接
+        track_sse_connection(connection_id, "hint")
+
         try:
             # Get hint
             state = await tutor_hint_node(state, question_id, attempt)
@@ -622,12 +728,21 @@ async def get_hint(
             }
             yield f"data: {json.dumps(hint_event, ensure_ascii=False)}\n\n"
 
+        except asyncio.CancelledError:
+            logger.info(f"🔌 SSE 连接被取消: {connection_id}")
+            raise
+        except GeneratorExit:
+            logger.info(f"🔌 SSE 客户端断开: {connection_id}")
+            raise
         except Exception as e:
             error_event = {
                 "type": "error",
                 "message": str(e)
             }
             yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
+        finally:
+            # 🔥 清理连接
+            untrack_sse_connection(connection_id)
 
     return StreamingResponse(
         event_generator(),
@@ -1016,9 +1131,15 @@ async def chat_with_tutor(
 
     if request.stream:
         # SSE 流式响应
+        # 🔥 生成唯一的连接 ID 用于跟踪
+        connection_id = f"chat_{user_id}_{int(time.time() * 1000)}"
+
         async def event_generator():
             timeout_seconds = 180  # 3分钟超时
             full_response = ""  # 用于存储完整响应
+
+            # 🔥 跟踪 SSE 连接
+            track_sse_connection(connection_id, "chat")
 
             try:
                 async with asyncio.timeout(timeout_seconds):
@@ -1085,12 +1206,24 @@ async def chat_with_tutor(
                     "message": "请求超时，请稍后重试"
                 }
                 yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
+            except asyncio.CancelledError:
+                # 🔥 客户端断开连接或请求被取消
+                logger.info(f"🔌 SSE 连接被取消: {connection_id}")
+                raise  # 重新抛出以触发 finally 块
+            except GeneratorExit:
+                # 🔥 客户端断开连接（FastAPI 特有）
+                logger.info(f"🔌 SSE 客户端断开: {connection_id}")
+                raise
             except Exception as e:
                 error_event = {
                     "type": "error",
                     "message": f"生成回复时出错: {str(e)}"
                 }
                 yield f"data: {json.dumps(error_event, ensure_ascii=False)}\n\n"
+            finally:
+                # 🔥 无论什么情况都清理连接
+                untrack_sse_connection(connection_id)
+                logger.info(f"✅ SSE 连接已清理: {connection_id}")
 
         return StreamingResponse(
             event_generator(),

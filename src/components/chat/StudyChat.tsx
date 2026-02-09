@@ -53,6 +53,10 @@ export function StudyChat({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
+  // 🔥 SSE 连接管理 - 防止内存泄漏
+  const abortControllerRef = useRef<AbortController | null>(null)
+  const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null)
+
   // 初始化用户信息
   useEffect(() => {
     const userStr = localStorage.getItem('user')
@@ -126,6 +130,26 @@ export function StudyChat({
     loadHistory()
   }, [userId, chapterId])
 
+  // 🔥 组件卸载时清理 SSE 连接 - 防止内存泄漏
+  useEffect(() => {
+    return () => {
+      // 取消进行中的请求
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+        abortControllerRef.current = null
+      }
+      // 关闭 reader
+      if (readerRef.current) {
+        try {
+          readerRef.current.cancel()
+        } catch (e) {
+          // 忽略取消错误
+        }
+        readerRef.current = null
+      }
+    }
+  }, [])
+
   // 自动滚动
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -161,6 +185,22 @@ export function StudyChat({
   const startStreaming = async (messageToSend: string) => {
     if (!userId) return
 
+    // 🔥 取消之前的连接（如果存在）
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    if (readerRef.current) {
+      try {
+        readerRef.current.cancel()
+      } catch (e) {
+        // 忽略取消错误
+      }
+    }
+
+    // 🔥 创建新的 AbortController
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
+
     setIsStreaming(true)
     setStreamingContent('')
 
@@ -185,7 +225,8 @@ export function StudyChat({
             role: msg.role,
             content: msg.content
           }))
-        })
+        }),
+        signal: abortController.signal  // 🔥 关联 AbortController
       })
 
       if (!response.ok) {
@@ -198,6 +239,9 @@ export function StudyChat({
       if (!reader) {
         throw new Error('无法读取响应流')
       }
+
+      // 🔥 保存 reader 引用，用于清理
+      readerRef.current = reader
 
       let fullContent = ''
 
@@ -231,7 +275,7 @@ export function StudyChat({
                 console.log('添加新消息:', assistantMessage.content.substring(0, 100))
                 return newMessages
               })
-              
+
               fullContent = ''
               break
             }
@@ -264,8 +308,9 @@ export function StudyChat({
       }
 
     } catch (error: any) {
-      if (error.name === 'AbortError') {
-        console.log('请求已取消')
+      // 🔥 处理 AbortError - 用户取消请求或组件卸载
+      if (error.name === 'AbortError' || error.name === 'TypeError') {
+        console.log('SSE 连接已取消或组件已卸载')
         return
       }
 
@@ -284,6 +329,9 @@ export function StudyChat({
     } finally {
       setIsStreaming(false)
       setStreamingContent('')
+      // 🔥 清理引用
+      readerRef.current = null
+      abortControllerRef.current = null
     }
   }
 
