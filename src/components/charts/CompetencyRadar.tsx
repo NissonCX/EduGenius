@@ -81,12 +81,12 @@ export const CompetencyRadar = React.memo(function CompetencyRadar({
   const [chartData, setChartData] = useState<CompetencyData[]>(DEFAULT_DATA)
   const [isLoading, setIsLoading] = useState(false)
 
-  // 从 API 获取数据
+  // 处理传入的数据
   useEffect(() => {
-    const fetchCompetencyData = async () => {
+    const processCompetencyData = async () => {
       setIsLoading(true)
       try {
-        // 临时：使用传入的数据或默认数据
+        // 使用传入的数据（从 Dashboard 页面的 API 调用获取）
         if (propData) {
           const formatted = COMPETENCY_DIMENSIONS.map(dim => ({
             dimension: dim.label,
@@ -94,15 +94,19 @@ export const CompetencyRadar = React.memo(function CompetencyRadar({
             fullMark: 100
           }))
           setChartData(formatted)
+        } else {
+          // 没有数据时使用默认值
+          setChartData(DEFAULT_DATA)
         }
       } catch (error) {
-        console.error('Failed to fetch competency data:', error)
+        console.error('Failed to process competency data:', error)
+        setChartData(DEFAULT_DATA)
       } finally {
         setIsLoading(false)
       }
     }
 
-    fetchCompetencyData()
+    processCompetencyData()
   }, [propData])
 
   // 计算平均分

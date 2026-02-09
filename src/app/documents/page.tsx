@@ -139,27 +139,28 @@ export default function DocumentsPage() {
     if (e.target.files) {
       const files = Array.from(e.target.files)
       const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
-      
+      const SUPPORTED_FORMATS = ['pdf', 'txt', 'docx', 'pptx', 'docm']
+
       const validFiles = files.filter(file => {
         const ext = file.name.split('.').pop()?.toLowerCase()
-        const isValidType = ext === 'pdf' || ext === 'txt'
+        const isValidType = ext && SUPPORTED_FORMATS.includes(ext)
         const isValidSize = file.size <= MAX_FILE_SIZE
-        
+
         if (!isValidType) {
-          setUploadMessage(`文件 ${file.name} 格式不支持，只支持 PDF 和 TXT`)
+          setUploadMessage(`文件 ${file.name} 格式不支持，支持格式：${SUPPORTED_FORMATS.join(', ').toUpperCase()}`)
           setUploadStatus('error')
           return false
         }
-        
+
         if (!isValidSize) {
           setUploadMessage(`文件 ${file.name} 超过 50MB 限制（当前 ${(file.size / 1024 / 1024).toFixed(1)}MB）`)
           setUploadStatus('error')
           return false
         }
-        
+
         return true
       })
-      
+
       if (validFiles.length > 0) {
         setSelectedFiles(validFiles)
         setUploadStatus('idle')
@@ -333,13 +334,13 @@ export default function DocumentsPage() {
             <div className="text-center">
               <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <p className="text-sm text-gray-600 mb-4">
-                支持 PDF 和 TXT 文件，最大 50MB
+                支持 PDF、TXT、Word (DOCX)、PowerPoint (PPTX) 文件，最大 50MB
               </p>
-              
+
               <label className="inline-block">
                 <input
                   type="file"
-                  accept=".pdf,.txt"
+                  accept=".pdf,.txt,.docx,.pptx,.docm"
                   multiple
                   onChange={handleFileSelect}
                   className="hidden"

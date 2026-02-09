@@ -20,7 +20,8 @@ import {
   AlertCircle,
   Sun,
   Scale,
-  MessageSquare
+  MessageSquare,
+  Loader2
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
@@ -39,25 +40,22 @@ interface SidebarEnhancedProps {
   onErrorCountChange?: (count: number) => void
   onErrorTrigger?: () => void // 外部触发错题动画
   onStrictnessChange?: (level: number) => void // 风格调整回调
+  documentId?: number | null // 可选：指定文档ID以加载真实章节
 }
-
-const mockChapters: Chapter[] = [
-  { id: '1', title: '第一章：线性代数基础', status: 'completed', progress: 100 },
-  { id: '2', title: '第二章：向量空间', status: 'in-progress', progress: 65 },
-  { id: '3', title: '第三章：矩阵运算', status: 'in-progress', progress: 30 },
-  { id: '4', title: '第四章：特征值与特征向量', status: 'locked', progress: 0 },
-  { id: '5', title: '第五章：线性变换', status: 'locked', progress: 0 },
-]
 
 export function SidebarEnhanced({
   className,
   onErrorTrigger,
-  onStrictnessChange
+  onStrictnessChange,
+  documentId
 }: SidebarEnhancedProps) {
   const { user } = useAuth()
   const [isDragOver, setIsDragOver] = useState(false)
   const [errorCount, setErrorCount] = useState(0)
   const [shakeError, setShakeError] = useState(false)
+  const [chapters, setChapters] = useState<Chapter[]>([])
+  const [chaptersLoading, setChaptersLoading] = useState(false)
+  const [chaptersError, setChaptersError] = useState<string | null>(null)
   // 使用用户的导师风格偏好，如果没有则使用默认值3
   const [strictness, setStrictness] = useState(user?.teachingStyle || 3)
   const pathname = usePathname()
@@ -69,9 +67,63 @@ export function SidebarEnhanced({
     }
   }, [user?.teachingStyle])
 
-  const overallProgress = Math.round(
-    mockChapters.reduce((acc, ch) => acc + ch.progress, 0) / mockChapters.length
-  )
+  // 加载章节数据
+  useEffect(() => {
+    if (documentId) {
+      loadChapters(documentId)
+    } else {
+      // Demo 模式：使用模拟数据
+      setChapters([
+        { id: '1', title: '第一章：线性代数基础', status: 'completed', progress: 100 },
+        { id: '2', title: '第二章：向量空间', status: 'in-progress', progress: 65 },
+        { id: '3', title: '第三章：矩阵运算', status: 'in-progress', progress: 30 },
+        { id: '4', title: '第四章：特征值与特征向量', status: 'locked', progress: 0 },
+        { id: '5', title: '第五章：线性变换', status: 'locked', progress: 0 },
+      ])
+    }
+  }, [documentId])
+
+  const loadChapters = async (docId: number) => {
+    setChaptersLoading(true)
+    setChaptersError(null)
+    try {
+      const response = await fetch(`/api/documents/${docId}/chapters`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to load chapters')
+      }
+
+      const data = await response.json()
+      const chapterList = data.chapters || []
+
+      // Transform API data to Chapter format
+      const transformedChapters: Chapter[] = chapterList.map((ch: any) => ({
+        id: ch.chapter_number.toString(),
+        title: ch.chapter_title || `第${ch.chapter_number}章`,
+        status: ch.is_locked ? 'locked' : ch.status === 'completed' ? 'completed' : 'in-progress',
+        progress: ch.completion_percentage || 0,
+      }))
+
+      setChapters(transformedChapters)
+    } catch (err) {
+      console.error('Failed to load chapters:', err)
+      setChaptersError('无法加载章节列表')
+      // Fallback to demo data
+      setChapters([
+        { id: '1', title: '第一章：示例章节', status: 'locked', progress: 0 },
+      ])
+    } finally {
+      setChaptersLoading(false)
+    }
+  }
+
+  const overallProgress = chapters.length > 0
+    ? Math.round(chapters.reduce((acc, ch) => acc + ch.progress, 0) / chapters.length)
+    : 0
 
   const navItems = [
     { href: '/', icon: Home, label: '首页' },
@@ -331,38 +383,48 @@ export function SidebarEnhanced({
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-medium text-gray-500">章节目录</h2>
           <span className="text-xs text-gray-500">
-            {mockChapters.filter(c => c.status !== 'locked').length}/{mockChapters.length}
+            {chapters.filter(c => c.status !== 'locked').length}/{chapters.length}
           </span>
         </div>
 
-        <nav className="space-y-1">
-          {mockChapters.map((chapter, index) => (
-            <motion.div
-              key={chapter.id}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.2, delay: index * 0.05 }}
-            >
-              <button
-                className={cn(
-                  "w-full flex items-center justify-between p-3 rounded-xl transition-all duration-200",
-                  "border border-transparent hover:border-gray-200 hover:shadow-sm",
-                  chapter.status === 'in-progress' && "border-gray-200 bg-gray-50/50",
-                  chapter.status === 'locked' && "opacity-50 cursor-not-allowed"
-                )}
-                disabled={chapter.status === 'locked'}
+        {chaptersLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
+          </div>
+        ) : chaptersError ? (
+          <div className="text-center py-8">
+            <p className="text-xs text-gray-500">{chaptersError}</p>
+          </div>
+        ) : (
+          <nav className="space-y-1">
+            {chapters.map((chapter, index) => (
+              <motion.div
+                key={chapter.id}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.2, delay: index * 0.05 }}
               >
-                <div className="flex items-center space-x-3">
-                  <ChapterIcon status={chapter.status} />
-                  <span className="text-sm text-left">{chapter.title}</span>
-                </div>
-                {chapter.status !== 'locked' && (
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
-                )}
-              </button>
-            </motion.div>
-          ))}
-        </nav>
+                <button
+                  className={cn(
+                    "w-full flex items-center justify-between p-3 rounded-xl transition-all duration-200",
+                    "border border-transparent hover:border-gray-200 hover:shadow-sm",
+                    chapter.status === 'in-progress' && "border-gray-200 bg-gray-50/50",
+                    chapter.status === 'locked' && "opacity-50 cursor-not-allowed"
+                  )}
+                  disabled={chapter.status === 'locked'}
+                >
+                  <div className="flex items-center space-x-3">
+                    <ChapterIcon status={chapter.status} />
+                    <span className="text-sm text-left">{chapter.title}</span>
+                  </div>
+                  {chapter.status !== 'locked' && (
+                    <ChevronRight className="w-4 h-4 text-gray-400" />
+                  )}
+                </button>
+              </motion.div>
+            ))}
+          </nav>
+        )}
       </div>
     </aside>
   )

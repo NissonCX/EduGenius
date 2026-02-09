@@ -91,8 +91,27 @@ def create_teaching_graph():
     workflow.add_node("architect", architect_node)
     workflow.add_node("tutor", tutor_node)
     workflow.add_node("examiner", examiner_node)
-    workflow.add_node("evaluate_answer", lambda state: state)  # Placeholder
-    workflow.add_node("tutor_hint", lambda state: state)  # Placeholder
+
+    # Wrapper for evaluate_answer that extracts answer_data from state
+    async def evaluate_answer_wrapper(state: TeachingState) -> TeachingState:
+        """Wrapper to call evaluate_answer_node with pending_answer from state."""
+        answer_data = state.get("pending_answer", {})
+        if answer_data:
+            return await evaluate_answer_node(state, answer_data)
+        return state
+
+    # Wrapper for tutor_hint that extracts hint request from state
+    async def tutor_hint_wrapper(state: TeachingState) -> TeachingState:
+        """Wrapper to call tutor_hint_node with hint_request from state."""
+        hint_request = state.get("hint_request", {})
+        if hint_request:
+            question_id = hint_request.get("question_id", "")
+            attempt = hint_request.get("attempt", 1)
+            return await tutor_hint_node(state, question_id, attempt)
+        return state
+
+    workflow.add_node("evaluate_answer", evaluate_answer_wrapper)
+    workflow.add_node("tutor_hint", tutor_hint_wrapper)
     workflow.add_node("tutor_summary", tutor_summary_node)
 
     # Define the edges (workflow)
