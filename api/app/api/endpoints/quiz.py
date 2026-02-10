@@ -134,11 +134,12 @@ async def generate_questions(
         )
 
     try:
-        # 获取章节内容和标题
+        # 获取章节/小节内容和标题
         chapter_title, chapter_content = await _get_chapter_content_for_generation(
             request.document_id,
             request.chapter_number,
-            db
+            db,
+            subsection_number=request.subsection_number
         )
 
         # 创建 Examiner Agent
@@ -208,6 +209,7 @@ async def generate_questions(
             question = Question(
                 document_id=request.document_id,
                 chapter_number=request.chapter_number,
+                subsection_number=request.subsection_number,  # 标记小节
                 question_type=question_type,
                 question_text=question_text,
                 options=json.dumps(options_dict) if options_dict else None,
@@ -240,21 +242,66 @@ async def generate_questions(
 async def _get_chapter_content_for_generation(
     document_id: int,
     chapter_number: int,
-    db: AsyncSession
+    db: AsyncSession,
+    subsection_number: Optional[str] = None
 ) -> tuple[str, str]:
     """
-    获取章节信息用于生成题目
+    获取章节/小节信息用于生成题目
 
-    AI 不需要 PDF 内容，只需要章节标题就能出题
-    就像老师不需要看教材就能出题一样
+    AI 不需要 PDF 内容，只需要章节/小节标题就能出题
+
+    Args:
+        subsection_number: 小节编号（如 "1.1"），如果提供则生成小节级别的题目
 
     Returns:
-        tuple: (chapter_title, chapter_prompt)
+        tuple: (title, prompt)
     """
     from app.core.logging_config import get_logger
     logger = get_logger(__name__)
 
-    # 从 Progress 获取章节标题
+    # 获取文档信息
+    document_result = await db.execute(
+        select(Document).where(Document.id == document_id)
+    )
+    document = document_result.scalar_one_or_none()
+    document_title = document.title if document else "教材"
+
+    # 如果指定了小节，获取小节标题
+    if subsection_number:
+        from sqlalchemy import text
+
+        # 从 subsections 表获取小节信息
+        subsection_query = text("""
+            SELECT subsection_title
+            FROM subsections
+            WHERE document_id = :document_id
+              AND chapter_number = :chapter_number
+              AND subsection_number = :subsection_number
+            LIMIT 1
+        """)
+
+        result = await db.execute(
+            subsection_query,
+            {"document_id": document_id, "chapter_number": chapter_number, "subsection_number": subsection_number}
+        )
+        row = result.fetchone()
+
+        if row:
+            subsection_title = row[0]
+            title = f"{subsection_title}（{subsection_number}）"
+
+            prompt = f"""小节主题：{subsection_title}
+小节编号：{subsection_number}
+所属章节：第{chapter_number}章
+所属文档：{document_title}
+
+请基于小节主题"{subsection_title}"生成相关的测试题目。
+AI 可以利用自身的知识库，围绕这个具体的小节主题出题，题目应该聚焦于该小节的知识点。"""
+
+            logger.info(f"小节 {chapter_number}.{subsection_number} ({subsection_title}) - AI 基于小节主题生成题目")
+            return title, prompt
+
+    # 没有小节编号，获取章节级别的标题
     progress_result = await db.execute(
         select(Progress).where(
             Progress.document_id == document_id,
@@ -263,26 +310,17 @@ async def _get_chapter_content_for_generation(
     )
     progress = progress_result.scalar_one_or_none()
 
-    # 获取文档信息
-    document_result = await db.execute(
-        select(Document).where(Document.id == document_id)
-    )
-    document = document_result.scalar_one_or_none()
-
-    # 获取章节标题
     chapter_title = progress.chapter_title if progress else f"第{chapter_number}章"
-    document_title = document.title if document else "教材"
 
-    # AI 只需要章节主题就能出题
-    chapter_prompt = f"""章节主题：{chapter_title}
+    prompt = f"""章节主题：{chapter_title}
 所属文档：{document_title}
 
 请基于"{chapter_title}"这个主题，生成相关的测试题目。
 AI 可以利用自身的知识库，围绕这个主题出题，不需要查看具体教材内容。"""
 
-    logger.info(f"章节 {chapter_number} ({chapter_title}) - AI 基于主题生成题目")
+    logger.info(f"章节 {chapter_number} ({chapter_title}) - AI 基于章节主题生成题目")
 
-    return chapter_title, chapter_prompt
+    return chapter_title, prompt
 
 
 

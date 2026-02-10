@@ -115,16 +115,23 @@ function QuizPageContent() {
 
   const generateSampleQuestions = async () => {
     try {
+      const requestBody: any = {
+        document_id: parseInt(docId!),
+        chapter_number: parseInt(chapterId!),
+        question_type: 'choice',
+        difficulty: 3,
+        count: 5
+      };
+
+      // 如果有小节参数，添加到请求中
+      if (subsectionId) {
+        requestBody.subsection_number = subsectionId;
+      }
+
       const response = await fetch(getApiUrl('/api/quiz/generate'), {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({
-          document_id: parseInt(docId!),
-          chapter_number: parseInt(chapterId!),
-          question_type: 'choice',
-          difficulty: 3,
-          count: 5
-        })
+        body: JSON.stringify(requestBody)
       });
 
       if (!response.ok) {

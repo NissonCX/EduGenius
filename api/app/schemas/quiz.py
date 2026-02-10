@@ -10,6 +10,7 @@ class QuestionGenerate(BaseModel):
     """生成题目请求"""
     document_id: int = Field(..., gt=0, description="文档ID")
     chapter_number: int = Field(..., ge=1, le=100, description="章节编号")
+    subsection_number: Optional[str] = Field(None, description="小节编号（如 '1.1'）")
     question_type: str = Field(..., description="题目类型: choice, fill_blank, essay")
     difficulty: int = Field(default=3, ge=1, le=5, description="难度等级 1-5")
     count: int = Field(default=1, ge=1, le=10, description="生成题目数量")
