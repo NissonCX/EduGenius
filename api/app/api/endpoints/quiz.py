@@ -243,123 +243,18 @@ async def _get_chapter_content_for_generation(
     db: AsyncSession
 ) -> tuple[str, str]:
     """
-    获取章节内容用于生成题目
+    获取章节信息用于生成题目
+
+    AI 不需要 PDF 内容，只需要章节标题就能出题
+    就像老师不需要看教材就能出题一样
 
     Returns:
-        tuple: (chapter_title, chapter_content)
+        tuple: (chapter_title, chapter_prompt)
     """
     from app.core.logging_config import get_logger
     logger = get_logger(__name__)
 
-    default_title = f"第{chapter_number}章"
-    default_content = f"第{chapter_number}章内容"
-
-    # 获取文档
-    document_result = await db.execute(
-        select(Document).where(Document.id == document_id)
-    )
-    document = document_result.scalar_one_or_none()
-
-    if not document:
-        logger.warning(f"文档 {document_id} 不存在")
-        return default_title, default_content
-
-    # 方法1：从 ChromaDB 获取章节内容
-    try:
-        import chromadb
-        from app.core.config import settings
-
-        chroma_client = chromadb.PersistentClient(path=settings.CHROMA_PERSIST_DIR)
-        collection_name = document.chroma_collection_name or f"doc_{document.md5_hash}"
-
-        try:
-            collection = chroma_client.get_collection(collection_name)
-
-            # 获取该章节的所有内容
-            results = collection.get(
-                where={"chapter": chapter_number},
-                include=["documents", "metadatas"]
-            )
-
-            if results and results.get('documents'):
-                # 合并所有文档片段
-                content_parts = []
-                for i, doc in enumerate(results['documents'][:20]):  # 最多取20个片段
-                    if doc:
-                        content_parts.append(doc)
-
-                if content_parts:
-                    chapter_content = "\n\n".join(content_parts)
-                    # 从 Progress 获取章节标题
-                    progress_result = await db.execute(
-                        select(Progress).where(
-                            Progress.document_id == document_id,
-                            Progress.chapter_number == chapter_number
-                        )
-                    )
-                    progress = progress_result.scalar_one_or_none()
-                    title = progress.chapter_title if progress else default_title
-
-                    logger.info(f"从 ChromaDB 获取到章节 {chapter_number} 内容，{len(chapter_content)} 字符")
-                    return title, chapter_content[:5000]  # 限制长度
-
-        except Exception as e:
-            logger.debug(f"从 ChromaDB 获取内容失败: {e}")
-
-    except ImportError:
-        logger.debug("ChromaDB 未安装")
-    except Exception as e:
-        logger.warning(f"ChromaDB 查询异常: {e}")
-
-    # 方法2：从对话历史中获取相关内容
-    from app.models.document import ConversationHistory
-
-    history_result = await db.execute(
-        select(ConversationHistory)
-        .where(
-            ConversationHistory.document_id == document_id,
-            ConversationHistory.chapter_number == chapter_number,
-            ConversationHistory.role == 'assistant'
-        )
-        .order_by(ConversationHistory.created_at.desc())
-        .limit(10)
-    )
-    conversations = history_result.scalars().all()
-
-    if conversations:
-        # 拼接最近的对话内容
-        content_parts = [conv.content for conv in conversations if conv.content]
-        if content_parts:
-            logger.info(f"从对话历史获取到章节 {chapter_number} 内容，{len(content_parts)} 条对话")
-            return default_title, "\n\n".join(content_parts[:5])
-
-    # 方法3：从原始 PDF 文件提取内容
-    try:
-        import os
-        from app.services.document_extractors import extract_text_from_file
-
-        # 查找上传的文件
-        upload_dir = os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
-        if os.path.exists(upload_dir):
-            # 尝试匹配文件
-            for filename in os.listdir(upload_dir):
-                filepath = os.path.join(upload_dir, filename)
-                if os.path.isfile(filepath) and document.filename in filename:
-                    try:
-                        # 提取文本
-                        text = extract_text_from_file(filepath)
-                        if text and len(text) > 100:
-                            logger.info(f"从 PDF 文件提取到 {len(text)} 字符")
-                            # 返回全部文本，让 AI 基于章节号生成相关题目
-                            return default_title, f"文档内容：\n\n{text[:10000]}"
-                    except Exception as e:
-                        logger.debug(f"提取文件内容失败: {e}")
-    except ImportError:
-        logger.debug("文档提取服务不可用")
-    except Exception as e:
-        logger.warning(f"从文件提取内容异常: {e}")
-
-    # 方法4：从 Progress 获取章节标题，返回基本信息
+    # 从 Progress 获取章节标题
     progress_result = await db.execute(
         select(Progress).where(
             Progress.document_id == document_id,
@@ -368,27 +263,28 @@ async def _get_chapter_content_for_generation(
     )
     progress = progress_result.scalar_one_or_none()
 
-    title = progress.chapter_title if progress else default_title
+    # 获取文档信息
+    document_result = await db.execute(
+        select(Document).where(Document.id == document_id)
+    )
+    document = document_result.scalar_one_or_none()
 
-    # 给出清晰的提示
-    logger.warning(f"章节 {chapter_number} 无可用内容，建议用户先学习")
+    # 获取章节标题
+    chapter_title = progress.chapter_title if progress else f"第{chapter_number}章"
+    document_title = document.title if document else "教材"
 
-    # 返回提示性内容
-    prompt = f"""
-【提示】此章节暂时没有可直接用于生成题目的内容。
+    # AI 只需要章节主题就能出题
+    chapter_prompt = f"""章节主题：{chapter_title}
+所属文档：{document_title}
 
-建议：
-1. 先使用"学习"功能学习此章节
-2. 学习后系统会记录内容，然后可以生成测试题
+请基于"{chapter_title}"这个主题，生成相关的测试题目。
+AI 可以利用自身的知识库，围绕这个主题出题，不需要查看具体教材内容。"""
 
-章节信息：
-- 标题：{title}
-- 文档：{document.title or '未命名文档'}
+    logger.info(f"章节 {chapter_number} ({chapter_title}) - AI 基于主题生成题目")
 
-请基于章节标题"{title}"，生成一些基础的测试题目。
-    """.strip()
+    return chapter_title, chapter_prompt
 
-    return title, prompt
+
 
 
 async def _generate_fallback_questions(request: QuestionGenerate, db: AsyncSession) -> List[Question]:
