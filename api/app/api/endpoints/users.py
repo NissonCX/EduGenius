@@ -1267,3 +1267,167 @@ async def confirm_password_reset(
         "message": "密码重置成功，请使用新密码登录",
         "status": "success"
     }
+
+
+@router.get("/{user_id}/activities")
+async def get_user_activities(
+    user_id: int,
+    limit: int = 10,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    获取用户最近的学习活动
+
+    返回的学习活动包括：
+    - 章节完成
+    - 章节开始学习
+    - 测验完成
+    - 等级提升
+    """
+    from datetime import timedelta
+    from app.models.document import Document
+
+    # 获取用户信息
+    user_result = await db.execute(
+        select(User).where(User.id == user_id)
+    )
+    user = user_result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在"
+        )
+
+    activities = []
+
+    # 1. 获取最近的进度记录（最近7天）
+    seven_days_ago = datetime.utcnow() - timedelta(days=7)
+
+    progress_result = await db.execute(
+        select(Progress, Document)
+        .join(Document, Progress.document_id == Document.id)
+        .where(Progress.user_id == user_id)
+        .where(Progress.last_accessed_at >= seven_days_ago)
+        .order_by(Progress.last_accessed_at.desc())
+        .limit(limit * 2)
+    )
+    progress_records = progress_result.all()
+
+    for progress, document in progress_records:
+        # 完成的章节
+        if progress.status == 'completed' and progress.completed_at:
+            activities.append({
+                "id": f"progress_{progress.id}",
+                "action": "完成了",
+                "target": f"{progress.chapter_title}",
+                "time": _format_time_ago(progress.completed_at),
+                "timestamp": progress.completed_at.isoformat(),
+                "status": "completed",
+                "document_title": document.title
+            })
+
+        # 开始学习的章节
+        if progress.status == 'in_progress' and progress.started_at:
+            activities.append({
+                "id": f"progress_start_{progress.id}",
+                "action": "开始了学习",
+                "target": f"{progress.chapter_title}",
+                "time": _format_time_ago(progress.started_at),
+                "timestamp": progress.started_at.isoformat(),
+                "status": "progress",
+                "document_title": document.title
+            })
+
+    # 2. 获取最近的测验记录
+    quiz_result = await db.execute(
+        select(QuizAttempt, Progress, Document)
+        .join(Progress, QuizAttempt.progress_id == Progress.id)
+        .join(Document, Progress.document_id == Document.id)
+        .where(Progress.user_id == user_id)
+        .where(QuizAttempt.created_at >= seven_days_ago)
+        .order_by(QuizAttempt.created_at.desc())
+        .limit(limit)
+    )
+    quiz_records = quiz_result.all()
+
+    # 统计每个章节的测验结果
+    chapter_quiz_stats = {}
+    for quiz_attempt, progress, document in quiz_records:
+        key = f"{progress.id}"
+        if key not in chapter_quiz_stats:
+            chapter_quiz_stats[key] = {
+                "total": 0,
+                "correct": 0,
+                "chapter_title": progress.chapter_title,
+                "document_title": document.title,
+                "latest_attempt": quiz_attempt.created_at
+            }
+        chapter_quiz_stats[key]["total"] += 1
+        if quiz_attempt.is_correct:
+            chapter_quiz_stats[key]["correct"] += 1
+        if quiz_attempt.created_at > chapter_quiz_stats[key]["latest_attempt"]:
+            chapter_quiz_stats[key]["latest_attempt"] = quiz_attempt.created_at
+
+    # 添加测验活动
+    for key, stats in chapter_quiz_stats.items():
+        score = int((stats["correct"] / stats["total"]) * 100)
+        if score >= 60:
+            activities.append({
+                "id": f"quiz_{key}",
+                "action": "通过了测试",
+                "target": f"{stats['chapter_title']} (得分: {score}%)",
+                "time": _format_time_ago(stats["latest_attempt"]),
+                "timestamp": stats["latest_attempt"].isoformat(),
+                "status": "success",
+                "document_title": stats["document_title"]
+            })
+
+    # 3. 添加等级提升活动（如果有等级变化记录）
+    # 这里简单地使用用户的当前等级作为示例
+    if user.cognitive_level and user.cognitive_level > 1:
+        # 假设等级是最近提升的（实际应用中应该有专门的等级变更历史表）
+        activities.append({
+            "id": f"level_{user.id}",
+            "action": "升级到",
+            "target": f"L{user.cognitive_level} 等级",
+            "time": "最近",
+            "timestamp": datetime.utcnow().isoformat(),
+            "status": "level-up"
+        })
+
+    # 按时间排序并限制数量
+    activities.sort(key=lambda x: x["timestamp"], reverse=True)
+    activities = activities[:limit]
+
+    return {
+        "activities": activities,
+        "total_count": len(activities)
+    }
+
+
+def _format_time_ago(dt: datetime) -> str:
+    """
+    格式化时间为"多久之前"
+    """
+    if not dt:
+        return "未知时间"
+
+    now = datetime.utcnow()
+    diff = now - dt
+
+    seconds = diff.total_seconds()
+
+    if seconds < 60:
+        return "刚刚"
+    elif seconds < 3600:
+        minutes = int(seconds / 60)
+        return f"{minutes}分钟前"
+    elif seconds < 86400:
+        hours = int(seconds / 3600)
+        return f"{hours}小时前"
+    elif seconds < 604800:
+        days = int(seconds / 86400)
+        return f"{days}天前"
+    else:
+        return dt.strftime("%Y-%m-%d")

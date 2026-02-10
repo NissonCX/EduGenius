@@ -19,6 +19,7 @@ export default function DashboardPage() {
   const [mistakeStats, setMistakeStats] = useState<any>(null)
   const [availableDocuments, setAvailableDocuments] = useState<any[]>([])
   const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null)
+  const [recentActivities, setRecentActivities] = useState<any[]>([])
 
   // 获取用户当前风格（从后端获取，不可修改）
   const teachingStyle = user?.teachingStyle || 3
@@ -54,17 +55,19 @@ export default function DashboardPage() {
         }
 
         // 并行获取数据
-        const [competency, graph, stats, mistakes] = await Promise.all([
+        const [competency, graph, stats, mistakes, activities] = await Promise.all([
           fetchCompetencyData(user.id, documentId, token || undefined),
           fetchKnowledgeGraph(user.id, documentId, 1, token || undefined),
           fetchUserStats(user.id, token || undefined),
-          fetchMistakeStats(token || undefined)
+          fetchMistakeStats(token || undefined),
+          fetchRecentActivities(user.id, token || undefined)
         ])
 
         setCompetencyData(competency)
         setKnowledgeGraph(graph)
         setUserStats(stats)
         setMistakeStats(mistakes)
+        setRecentActivities(activities)
       } catch (error) {
         console.error('Error loading dashboard data:', error)
       } finally {
@@ -242,6 +245,34 @@ export default function DashboardPage() {
         links: [],
         metadata: { document_id: documentId, user_id: userId, stats: {} }
       }
+    }
+  }
+
+  // 获取最近活动
+  const fetchRecentActivities = async (userId: number, token?: string) => {
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+
+      const response = await fetch(
+        getApiUrl(`/api/users/${userId}/activities?limit=10`),
+        { headers }
+      )
+
+      if (response.ok) {
+        const data = await response.json()
+        return data.activities || []
+      } else {
+        console.warn('获取活动历史失败，返回空数组')
+        return []
+      }
+    } catch (error) {
+      console.error('获取活动历史失败:', error)
+      return []
     }
   }
 
@@ -475,37 +506,51 @@ export default function DashboardPage() {
           transition={{ duration: 0.3, delay: 0.3 }}
         >
           <h2 className="text-xl font-semibold mb-6">最近活动</h2>
-          <div className="space-y-3">
-            {[
-              { action: '完成了', target: '第三章：矩阵运算', time: '10分钟前', status: 'completed' },
-              { action: '开始了学习', target: '第四章：特征值与特征向量', time: '25分钟前', status: 'progress' },
-              { action: '通过了测试', target: '第二章评估', time: '1小时前', status: 'success' },
-              { action: '升级到', target: 'L3 进阶等级', time: '昨天', status: 'level-up' }
-            ].map((activity, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.2, delay: 0.05 * index }}
-                className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-xl hover:shadow-sm transition-shadow duration-200"
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`w-2 h-2 rounded-full ${
-                    activity.status === 'completed' ? 'bg-black' :
-                    activity.status === 'progress' ? 'bg-gray-400' :
-                    activity.status === 'success' ? 'bg-black' :
-                    'bg-gray-600'
-                  }`} />
-                  <div>
-                    <p className="text-sm text-black">
-                      {activity.action} <span className="font-medium">{activity.target}</span>
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">{activity.time}</p>
+          {isDataLoading || authLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="h-16 bg-gray-50 rounded-xl border border-gray-200 animate-pulse"
+                />
+              ))}
+            </div>
+          ) : recentActivities.length === 0 ? (
+            <div className="text-center py-12 bg-white border border-gray-200 rounded-xl">
+              <p className="text-gray-500">还没有学习活动记录，开始学习吧！</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {recentActivities.map((activity, index) => (
+                <motion.div
+                  key={activity.id || index}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.2, delay: 0.05 * index }}
+                  className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-xl hover:shadow-sm transition-shadow duration-200"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-2 h-2 rounded-full ${
+                      activity.status === 'completed' ? 'bg-black' :
+                      activity.status === 'progress' ? 'bg-gray-400' :
+                      activity.status === 'success' ? 'bg-black' :
+                      activity.status === 'level-up' ? 'bg-gray-600' :
+                      'bg-gray-400'
+                    }`} />
+                    <div>
+                      <p className="text-sm text-black">
+                        {activity.action} <span className="font-medium">{activity.target}</span>
+                      </p>
+                      {activity.document_title && (
+                        <p className="text-xs text-gray-400 mt-0.5">{activity.document_title}</p>
+                      )}
+                      <p className="text-xs text-gray-500 mt-1">{activity.time}</p>
+                    </div>
                   </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
+                </motion.div>
+              ))}
+            </div>
+          )}
         </motion.div>
       </section>
     </div>
