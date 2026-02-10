@@ -3,52 +3,75 @@
 /**
  * MermaidDiagram - Mermaid 图表渲染组件
  * 自动检测并渲染 Mermaid 代码块为可视化图表
+ *
+ * 性能优化：使用动态导入懒加载 mermaid 库
  */
 
 import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import mermaid from 'mermaid'
+
+// Mermaid 加载状态（模块级缓存）
+let mermaidModule: any = null
+let mermaidInitialized = false
 
 interface MermaidDiagramProps {
   code: string // Mermaid 代码
   className?: string
 }
 
-// 初始化 Mermaid（仅一次）
-let mermaidInitialized = false
-
 export function MermaidDiagram({ code, className = '' }: MermaidDiagramProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [svgContent, setSvgContent] = useState<string>('')
+  const [mermaidLoaded, setMermaidLoaded] = useState(false)
 
+  // 懒加载 mermaid 模块
   useEffect(() => {
-    if (!mermaidInitialized) {
-      mermaid.initialize({
-        startOnLoad: false,
-        theme: 'default',
-        securityLevel: 'loose',
-        themeVariables: {
-          primaryColor: '#000000',
-          primaryTextColor: '#111827',
-          primaryBorderColor: '#000000',
-          lineColor: '#6B7280',
-          secondaryColor: '#374151',
-          tertiaryColor: '#F3F4F6',
-          fontSize: '14px'
-        },
-        flowchart: {
-          useMaxWidth: true,
-          htmlLabels: true,
-          curve: 'basis'
+    let mounted = true
+
+    const loadMermaid = async () => {
+      try {
+        if (!mermaidModule) {
+          // 使用动态 import 加载 mermaid
+          const module = await import('mermaid')
+          mermaidModule = module.default || module
         }
-      })
-      mermaidInitialized = true
+
+        if (mounted && !mermaidInitialized) {
+          mermaidModule.initialize({
+            startOnLoad: false,
+            theme: 'default',
+            securityLevel: 'loose',
+            themeVariables: {
+              primaryColor: '#000000',
+              primaryTextColor: '#111827',
+              primaryBorderColor: '#000000',
+              lineColor: '#6B7280',
+              secondaryColor: '#374151',
+              tertiaryColor: '#F3F4F6',
+              fontSize: '14px'
+            },
+            flowchart: {
+              useMaxWidth: true,
+              htmlLabels: true,
+              curve: 'basis'
+            }
+          })
+          mermaidInitialized = true
+          setMermaidLoaded(true)
+        }
+      } catch (err) {
+        console.error('Failed to load mermaid:', err)
+        setError('图表库加载失败')
+      }
     }
+
+    loadMermaid()
+    return () => { mounted = false }
   }, [])
 
   useEffect(() => {
-    if (!code || !containerRef.current) return
+    if (!code || !containerRef.current || !mermaidLoaded || !mermaidModule) return
 
     const renderDiagram = async () => {
       try {
@@ -57,7 +80,7 @@ export function MermaidDiagram({ code, className = '' }: MermaidDiagramProps) {
         const id = `mermaid-${Math.random().toString(36).substr(2, 9)}`
 
         // 渲染 Mermaid 图表
-        const { svg } = await mermaid.render(id, code)
+        const { svg } = await mermaidModule.render(id, code)
         setSvgContent(svg)
       } catch (err) {
         console.error('Mermaid rendering error:', err)
@@ -66,7 +89,7 @@ export function MermaidDiagram({ code, className = '' }: MermaidDiagramProps) {
     }
 
     renderDiagram()
-  }, [code])
+  }, [code, mermaidLoaded])
 
   if (error) {
     return (
@@ -77,6 +100,14 @@ export function MermaidDiagram({ code, className = '' }: MermaidDiagramProps) {
       >
         <p className="text-sm text-red-600">{error}</p>
       </motion.div>
+    )
+  }
+
+  if (!mermaidLoaded) {
+    return (
+      <div className={`flex items-center justify-center p-8 ${className}`}>
+        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-300"></div>
+      </div>
     )
   }
 

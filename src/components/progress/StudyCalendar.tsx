@@ -3,9 +3,11 @@
 /**
  * StudyCalendar - 学习日历热力图组件
  * 显示过去一段时间的学习活跃度
+ *
+ * 性能优化：使用 React.memo 和 useMemo 避免不必要的重渲染
  */
 
-import { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
 
 interface StudyDay {
@@ -158,3 +160,11 @@ export function StudyCalendar({ studyDays = [], weeks = 12 }: StudyCalendarProps
     </div>
   )
 }
+
+// 使用 React.memo 优化性能
+export default React.memo(StudyCalendar, (prevProps, nextProps) => {
+  return (
+    prevProps.studyDays === nextProps.studyDays &&
+    prevProps.weeks === nextProps.weeks
+  )
+})

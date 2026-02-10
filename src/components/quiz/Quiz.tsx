@@ -33,7 +33,17 @@ interface QuizResults {
   answers: { questionId: number; userAnswer: string; isCorrect: boolean }[];
 }
 
-export default function Quiz({ questions, onComplete, documentId, chapterNumber, userId, token, onCompetencyUpdate }: QuizProps) {
+// 自定义比较函数，优化 Quiz 组件重渲染
+function arePropsEqual(prevProps: QuizProps, nextProps: QuizProps) {
+  return (
+    prevProps.questions.length === nextProps.questions.length &&
+    prevProps.questions.every((q, i) => q.id === nextProps.questions[i].id) &&
+    prevProps.documentId === nextProps.documentId &&
+    prevProps.chapterNumber === nextProps.chapterNumber
+  )
+}
+
+export default React.memo(function Quiz({ questions, onComplete, documentId, chapterNumber, userId, token, onCompetencyUpdate }: QuizProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<string>('');
   const [userAnswers, setUserAnswers] = useState<{ questionId: number; userAnswer: string }[]>([]);
@@ -318,4 +328,4 @@ export default function Quiz({ questions, onComplete, documentId, chapterNumber,
       </AnimatePresence>
     </div>
   );
-}
+}, arePropsEqual)
