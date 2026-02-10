@@ -58,16 +58,40 @@ export function StudyCurve({ data = [] }: StudyCurveProps) {
   }
 
   // 计算统计信息
-  const stats = {
-    avgProgress: chartData.length > 0
-      ? Math.round(chartData.reduce((sum, d) => sum + d.progress, 0) / chartData.length)
-      : 0,
-    totalTime: chartData.reduce((sum, d) => sum + d.timeSpent, 0),
-    totalDays: chartData.length,
-    progress: chartData.length > 0
-      ? Math.round(chartData[chartData.length - 1].progress - chartData[0].progress)
-      : 0
-  }
+  const stats = useMemo(() => {
+    if (chartData.length === 0) {
+      return {
+        avgProgress: 0,
+        totalTime: 0,
+        totalDays: 0,
+        progress: 0
+      }
+    }
+
+    const avgProgress = Math.round(chartData.reduce((sum, d) => sum + d.progress, 0) / chartData.length)
+    const totalTime = chartData.reduce((sum, d) => sum + d.timeSpent, 0)
+    const totalDays = chartData.length
+
+    // 计算进度增长：最后一个有学习活动的日期的进度 - 初始进度
+    // 找到最后一个有学习时长的数据点作为"当前"进度
+    const lastActiveDay = [...chartData].reverse().find(d => d.timeSpent > 0)
+    const firstActiveDay = [...chartData].find(d => d.timeSpent > 0)
+
+    let progressGrowth = 0
+    if (lastActiveDay && firstActiveDay && lastActiveDay !== firstActiveDay) {
+      progressGrowth = Math.round(lastActiveDay.progress - firstActiveDay.progress)
+    } else if (lastActiveDay) {
+      // 只有一天有学习活动
+      progressGrowth = Math.round(lastActiveDay.progress)
+    }
+
+    return {
+      avgProgress,
+      totalTime,
+      totalDays,
+      progress: progressGrowth
+    }
+  }, [chartData])
 
   return (
     <div className="w-full">
