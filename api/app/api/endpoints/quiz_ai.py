@@ -21,8 +21,13 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/api/quiz", tags=["quiz"])
 
 
-async def get_chapter_content(document_id: int, chapter_number: int, db: AsyncSession) -> str:
-    """获取章节内容用于出题"""
+async def get_chapter_content(document_id: int, chapter_number: int, db: AsyncSession) -> tuple[str, str]:
+    """
+    获取章节内容用于出题
+
+    Returns:
+        tuple: (chapter_title, chapter_content)
+    """
     from app.models.document import ConversationHistory
     import json
 
@@ -38,13 +43,16 @@ async def get_chapter_content(document_id: int, chapter_number: int, db: AsyncSe
             detail=f"文档 {document_id} 不存在"
         )
 
+    default_title = f"第{chapter_number}章"
+    default_content = f"第{chapter_number}章内容，来自文档：{doc.title}"
+
     # 优先从文档的章节JSON中获取内容
     if doc.chapters_json:
         try:
             chapters = json.loads(doc.chapters_json)
             for chapter in chapters:
                 if chapter.get('chapter_number') == chapter_number:
-                    title = chapter.get('title', '')
+                    title = chapter.get('title', default_title)
                     content = chapter.get('content', '')
                     subsections = chapter.get('subsections', [])
 
@@ -58,7 +66,7 @@ async def get_chapter_content(document_id: int, chapter_number: int, db: AsyncSe
                             chapter_text += f"- {sub.get('title', '')}\n"
 
                     logger.info(f"从文档章节JSON中获取内容: {title}")
-                    return chapter_text
+                    return title, chapter_text
         except Exception as e:
             logger.warning(f"解析章节JSON失败: {e}")
 
@@ -85,11 +93,11 @@ async def get_chapter_content(document_id: int, chapter_number: int, db: AsyncSe
             chapter_text = f"第{chapter_number}章 内容摘要（来自对话历史）\n\n"
             chapter_text += "\n\n".join(content_parts)
             logger.info(f"从对话历史中获取内容: {len(content_parts)} 条对话")
-            return chapter_text[:4000]  # 限制长度
+            return default_title, chapter_text[:4000]  # 限制长度
 
     # 最终降级方案：返回章节标题
     logger.warning(f"无法获取章节内容，使用降级方案: 第{chapter_number}章")
-    return f"第{chapter_number}章内容，来自文档：{doc.title}"
+    return default_title, default_content
 
 
 @router.post("/generate-ai-questions")
@@ -118,19 +126,21 @@ async def generate_ai_questions(
     )
 
     try:
-        # 调用 AI 生成题目
+        # 调用 AI 生成题目（使用正确的参数名）
         logger.info("调用 Examiner Agent 生成题目...")
+
+        # 构建符合 ExaminerAgent 要求的 state 结构
+        teaching_state = {
+            "student_level": 3,
+            "chapter_title": chapter_title,
+            "chapter_content": chapter_content,
+            "learning_objectives": [],
+            "wrong_questions": []
+        }
+
         questions_data = await examiner.generate_questions(
-            state={
-                "document_id": document_id,
-                "current_chapter": chapter_number,
-                "chapter_content": chapter_content,
-                "learning_objectives": [],
-                "wrong_questions": []
-            },
-            count=count,
-            difficulty=difficulty,
-            student_level=3
+            state=teaching_state,
+            num_questions=count
         )
 
         logger.info(f"AI生成成功，获得 {len(questions_data)} 道题目")
@@ -138,26 +148,53 @@ async def generate_ai_questions(
         # 验证并保存题目
         saved_count = 0
         for q_data in questions_data:
+            # 字段映射：Examiner Agent 返回的字段名 -> 数据库字段名
+            question_text = q_data.get('question_text') or q_data.get('question', '')
+            if not question_text:
+                logger.warning(f"题目缺少 question_text 字段，跳过: {q_data}")
+                continue
+
             # 检查是否重复
             existing = await db.execute(
                 select(Question).where(
-                    Question.question_text == q_data.get('question_text', '')
+                    Question.question_text == question_text
                 )
             )
             if existing.scalar_one_or_none():
-                logger.warning(f"跳过重复题目: {q_data.get('question_text', '')[:30]}...")
+                logger.warning(f"跳过重复题目: {question_text[:50]}...")
                 continue
+
+            # 处理选项：Examiner 返回数组格式 ["A. xxx", "B. xxx"]，需要转换为字典 {"A": "xxx", "B": "xxx"}
+            options_raw = q_data.get('options', [])
+            options_dict = None
+            if options_raw:
+                if isinstance(options_raw, list):
+                    options_dict = {}
+                    for opt in options_raw:
+                        if isinstance(opt, str) and len(opt) > 2:
+                            match = opt[0]  # 取第一个字符作为选项字母
+                            content = opt[2:] if opt[1] in ('.', '、') else opt[3:] if opt[2] in ('.', '、') else opt
+                            options_dict[match.upper()] = content.strip()
+                        elif isinstance(opt, dict):
+                            options_dict = opt
+                            break
+                elif isinstance(options_raw, dict):
+                    options_dict = options_raw
+
+            # 获取题目类型和难度
+            question_type = q_data.get('question_type') or q_data.get('type') or 'choice'
+            difficulty = q_data.get('difficulty') or q_data.get('difficulty_level') or difficulty
 
             # 创建新题目
             question = Question(
                 document_id=document_id,
                 chapter_number=chapter_number,
-                question_type=q_data.get('question_type', 'choice'),
-                question_text=q_data.get('question_text', ''),
-                options=json.dumps(q_data.get('options', {})) if q_data.get('options') else None,
+                question_type=question_type,
+                question_text=question_text,
+                options=json.dumps(options_dict) if options_dict else None,
                 correct_answer=q_data.get('correct_answer', ''),
                 explanation=q_data.get('explanation', ''),
-                difficulty=q_data.get('difficulty', 3),
+                difficulty=difficulty,
                 competency_dimension=q_data.get('competency_dimension', 'comprehension'),
                 created_by='AI'
             )

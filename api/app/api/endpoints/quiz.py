@@ -134,8 +134,8 @@ async def generate_questions(
         )
 
     try:
-        # 获取章节内容
-        chapter_content = await _get_chapter_content_for_generation(
+        # 获取章节内容和标题
+        chapter_title, chapter_content = await _get_chapter_content_for_generation(
             request.document_id,
             request.chapter_number,
             db
@@ -147,44 +147,73 @@ async def generate_questions(
             model=getattr(settings, 'MODEL_NAME', 'qwen-max')
         )
 
-        # 调用 AI 生成题目
-        logger.info(f"调用AI生成题目: document={request.document_id}, chapter={request.chapter_number}")
+        # 构建符合 ExaminerAgent 要求的 state 结构
+        teaching_state = {
+            "student_level": current_user.cognitive_level or 3,
+            "chapter_title": chapter_title,
+            "chapter_content": chapter_content,
+            "learning_objectives": [],
+            "wrong_questions": []
+        }
+
+        # 调用 AI 生成题目（使用正确的参数名）
+        logger.info(f"调用AI生成题目: document={request.document_id}, chapter={request.chapter_number}, count={request.count}")
         questions_data = await examiner.generate_questions(
-            state={
-                "document_id": request.document_id,
-                "current_chapter": request.chapter_number,
-                "chapter_content": chapter_content,
-                "learning_objectives": [],
-                "wrong_questions": []
-            },
-            count=request.count,
-            difficulty=request.difficulty,
-            student_level=current_user.cognitive_level
+            state=teaching_state,
+            num_questions=request.count
         )
 
         # 验证并保存题目
         saved_questions = []
         for q_data in questions_data:
+            # 字段映射：Examiner Agent 返回的字段名 -> 数据库字段名
+            question_text = q_data.get('question_text') or q_data.get('question', '')
+            if not question_text:
+                logger.warning(f"题目缺少 question_text 字段，跳过: {q_data}")
+                continue
+
             # 检查是否重复
             existing = await db.execute(
                 select(Question).where(
-                    Question.question_text == q_data.get('question_text', '')
+                    Question.question_text == question_text
                 )
             )
             if existing.scalar_one_or_none():
-                logger.warning(f"跳过重复题目: {q_data.get('question_text', '')[:30]}...")
+                logger.warning(f"跳过重复题目: {question_text[:50]}...")
                 continue
+
+            # 处理选项：Examiner 返回数组格式 ["A. xxx", "B. xxx"]，需要转换为字典 {"A": "xxx", "B": "xxx"}
+            options_raw = q_data.get('options', [])
+            options_dict = None
+            if options_raw:
+                if isinstance(options_raw, list):
+                    # 从 ["A. xxx", "B. xxx"] 转换为 {"A": "xxx", "B": "xxx"}
+                    options_dict = {}
+                    for opt in options_raw:
+                        if isinstance(opt, str) and len(opt) > 2:
+                            match = opt[0]  # 取第一个字符作为选项字母
+                            content = opt[2:] if opt[1] == '.' or opt[1] == '.' else opt[3:] if opt[2] == '.' else opt
+                            options_dict[match.upper()] = content.strip()
+                        elif isinstance(opt, dict):
+                            options_dict = opt
+                            break
+                elif isinstance(options_raw, dict):
+                    options_dict = options_raw
+
+            # 获取题目类型和难度
+            question_type = q_data.get('question_type') or q_data.get('type') or request.question_type
+            difficulty = q_data.get('difficulty') or q_data.get('difficulty_level') or request.difficulty
 
             # 创建新题目
             question = Question(
                 document_id=request.document_id,
                 chapter_number=request.chapter_number,
-                question_type=q_data.get('question_type', request.question_type),
-                question_text=q_data.get('question_text', ''),
-                options=json.dumps(q_data.get('options', {})) if q_data.get('options') else None,
+                question_type=question_type,
+                question_text=question_text,
+                options=json.dumps(options_dict) if options_dict else None,
                 correct_answer=q_data.get('correct_answer', ''),
                 explanation=q_data.get('explanation', ''),
-                difficulty=q_data.get('difficulty', request.difficulty),
+                difficulty=difficulty,
                 competency_dimension=q_data.get('competency_dimension', 'comprehension'),
                 created_by='AI'
             )
@@ -212,16 +241,24 @@ async def _get_chapter_content_for_generation(
     document_id: int,
     chapter_number: int,
     db: AsyncSession
-) -> str:
-    """获取章节内容用于生成题目"""
+) -> tuple[str, str]:
+    """
+    获取章节内容用于生成题目
+
+    Returns:
+        tuple: (chapter_title, chapter_content)
+    """
     # 尝试从文档的章节JSON中获取
     document_result = await db.execute(
         select(Document).where(Document.id == document_id)
     )
     document = document_result.scalar_one_or_none()
 
+    default_title = f"第{chapter_number}章"
+    default_content = f"第{chapter_number}章内容，来自文档：{document.title if document else '未知文档'}"
+
     if not document:
-        return f"第{chapter_number}章"
+        return default_title, default_content
 
     # 如果有章节JSON，尝试提取对应章节的内容
     if document.chapters_json:
@@ -232,8 +269,8 @@ async def _get_chapter_content_for_generation(
                 if chapter.get('chapter_number') == chapter_number:
                     # 返回章节标题和部分内容
                     content = chapter.get('content', '')
-                    title = chapter.get('title', '')
-                    return f"{title}\n\n{content[:2000]}"  # 限制内容长度
+                    title = chapter.get('title', default_title)
+                    return title, f"{title}\n\n{content[:3000]}"  # 限制内容长度
         except Exception as e:
             from app.core.logging_config import get_logger
             logger = get_logger(__name__)
@@ -256,9 +293,9 @@ async def _get_chapter_content_for_generation(
     if conversations:
         # 拼接最近的对话内容
         content_parts = [conv.content for conv in conversations if conv.role == 'assistant']
-        return f"第{chapter_number}章内容摘要\n\n" + "\n".join(content_parts[:5])
+        return default_title, f"{default_title}内容摘要\n\n" + "\n".join(content_parts[:5])
 
-    return f"第{chapter_number}章内容，来自文档：{document.title}"
+    return default_title, default_content
 
 
 async def _generate_fallback_questions(request: QuestionGenerate, db: AsyncSession) -> List[Question]:
