@@ -99,7 +99,7 @@
 
 ## 📁 文档完整性
 
-### ✅ 已创建文档 (10个)
+### ✅ 已创建文档 (11个)
 
 | 文档 | 用途 | 状态 |
 |------|------|------|
@@ -113,6 +113,7 @@
 | `DEBUGGING_GUIDE.md` | 调试指南 | ✅ |
 | `MIGRATION_GUIDE.md` | 迁移指南 | ✅ |
 | `CHANGELOG.md` | 变更日志 | ✅ |
+| `EMAIL_SETUP_GUIDE.md` | 邮件服务配置指南 | ✅ |
 
 ---
 
@@ -121,12 +122,23 @@
 ### 最新提交 (5个)
 
 ```
+63e48e0 - feat: 添加邮件服务配置指南和测试脚本
+0fb2588 - feat: 优化前端加载状态，添加骨架屏
 38d5382 - docs: 添加当前状态报告
 f8b04fa - fix: 修复 Next.js 15 元数据警告并添加测试指南
 5b1d86e - docs: 添加功能完整性优化完成报告
-bd782cc - feat: 完成EduGenius功能完整性优化
-426c668 - fix: 修复前端 TypeScript 类型错误
 ```
+
+### 功能优化完成 (第二轮)
+
+1. ✅ 优化前端加载状态（骨架屏）
+   - study/page.tsx: 文档列表和章节列表骨架屏
+   - mistakes/page.tsx: 统计数据表格骨架屏
+   - quiz/page.tsx: 标题和题目列表骨架屏
+2. ✅ 邮件服务配置
+   - 创建 EMAIL_SETUP_GUIDE.md 完整配置指南
+   - 创建 api/test_email.py 测试脚本
+   - 支持 Gmail、QQ、163、SendGrid 等服务
 
 ### 功能优化完成 (第一轮)
 
@@ -135,7 +147,7 @@ bd782cc - feat: 完成EduGenius功能完整性优化
 3. ✅ 实现密码重置前端
 4. ✅ 验证文档格式支持
 
-### 问题修复 (本轮)
+### 问题修复 (历史)
 
 1. ✅ 修复 Next.js 15 元数据警告
 2. ✅ 解决后端启动问题（目录错误）
@@ -165,7 +177,7 @@ bd782cc - feat: 完成EduGenius功能完整性优化
 
 ### 非紧急
 1. **Redis 未安装** - 已优雅降级，不影响核心功能
-2. **邮件服务未配置** - 密码重置需要手动从数据库获取 token
+2. **邮件服务未配置** - 已提供配置指南（EMAIL_SETUP_GUIDE.md），用户可按需配置
 
 ### 待优化
 1. 添加更多单元测试
@@ -177,11 +189,11 @@ bd782cc - feat: 完成EduGenius功能完整性优化
 ## 📦 待提交的更改
 
 ### 修改的文件
-- `next-env.d.ts` - TypeScript 配置
-- `start-dev.sh` - 启动脚本
+- `PROJECT_STATUS.md` - 项目状态更新
 
 ### 新增的文件
-- `start-backend.sh` - 后端启动脚本
+- `EMAIL_SETUP_GUIDE.md` - 邮件服务配置指南
+- `api/test_email.py` - 邮件服务测试脚本
 
 ---
 
