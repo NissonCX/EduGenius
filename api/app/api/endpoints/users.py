@@ -1431,3 +1431,170 @@ def _format_time_ago(dt: datetime) -> str:
         return f"{days}天前"
     else:
         return dt.strftime("%Y-%m-%d")
+
+
+@router.get("/{user_id}/study-calendar")
+async def get_user_study_calendar(
+    user_id: int,
+    weeks: int = 12,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    获取用户学习日历热力图数据
+
+    返回过去 N 周每天的学习时长（分钟）
+    """
+    from datetime import timedelta
+
+    # 获取用户信息
+    user_result = await db.execute(
+        select(User).where(User.id == user_id)
+    )
+    user = user_result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在"
+        )
+
+    # 计算时间范围
+    end_date = datetime.utcnow().date()
+    start_date = end_date - timedelta(weeks=weeks)
+
+    # 获取该时间范围内的所有进度记录
+    progress_result = await db.execute(
+        select(Progress)
+        .where(Progress.user_id == user_id)
+        .where(Progress.last_accessed_at >= datetime.combine(start_date, datetime.min.time()))
+        .order_by(Progress.last_accessed_at)
+    )
+
+    progress_records = progress_result.scalars().all()
+
+    # 按日期聚合学习时长
+    daily_study_time = {}
+
+    for progress in progress_records:
+        if progress.time_spent_minutes and progress.last_accessed_at:
+            date_key = progress.last_accessed_at.date().isoformat()
+            daily_study_time[date_key] = daily_study_time.get(date_key, 0) + progress.time_spent_minutes
+
+    # 生成完整日期范围的数据
+    study_days = []
+    current_date = start_date
+
+    while current_date <= end_date:
+        date_key = current_date.isoformat()
+        study_days.append({
+            "date": date_key,
+            "count": daily_study_time.get(date_key, 0)
+        })
+        current_date += timedelta(days=1)
+
+    return {
+        "study_days": study_days,
+        "weeks": weeks,
+        "total_days": len(study_days),
+        "total_study_time": sum(d["count"] for d in study_days)
+    }
+
+
+@router.get("/{user_id}/study-curve")
+async def get_user_study_curve(
+    user_id: int,
+    days: int = 30,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    获取用户学习曲线数据
+
+    返回过去 N 天的学习进度趋势
+    """
+    from datetime import timedelta
+    from sqlalchemy import func
+
+    # 获取用户信息
+    user_result = await db.execute(
+        select(User).where(User.id == user_id)
+    )
+    user = user_result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在"
+        )
+
+    # 计算时间范围
+    end_date = datetime.utcnow()
+    start_date = end_date - timedelta(days=days)
+
+    # 获取该时间范围内的所有进度记录
+    progress_result = await db.execute(
+        select(Progress)
+        .where(Progress.user_id == user_id)
+        .where(Progress.last_accessed_at >= start_date)
+        .order_by(Progress.last_accessed_at)
+    )
+
+    progress_records = progress_result.scalars().all()
+
+    # 按日期聚合数据
+    daily_data = {}
+
+    for progress in progress_records:
+        if progress.last_accessed_at:
+            date_key = progress.last_accessed_at.date().isoformat()
+
+            if date_key not in daily_data:
+                daily_data[date_key] = {
+                    "date": date_key,
+                    "time_spent": 0,
+                    "progress": 0,
+                    "quiz_count": 0,
+                    "quiz_correct": 0
+                }
+
+            daily_data[date_key]["time_spent"] += progress.time_spent_minutes or 0
+            daily_data[date_key]["progress"] = max(daily_data[date_key]["progress"], progress.completion_percentage or 0)
+            daily_data[date_key]["quiz_count"] += progress.quiz_attempts or 0
+            daily_data[date_key]["quiz_correct"] += int((progress.quiz_success_rate or 0) * (progress.quiz_attempts or 0))
+
+    # 获取每天的测验分数
+    for date_key in daily_data:
+        if daily_data[date_key]["quiz_count"] > 0:
+            daily_data[date_key]["avg_score"] = int((daily_data[date_key]["quiz_correct"] / daily_data[date_key]["quiz_count"]) * 100)
+        else:
+            daily_data[date_key]["avg_score"] = None
+
+    # 生成完整日期范围的数据（包括没有学习的日期）
+    data_points = []
+    current_date = start_date.date()
+
+    while current_date <= end_date.date():
+        date_key = current_date.isoformat()
+
+        if date_key in daily_data:
+            data_points.append({
+                "date": date_key,
+                "progress": daily_data[date_key]["progress"],
+                "timeSpent": daily_data[date_key]["time_spent"],
+                "avgScore": daily_data[date_key]["avg_score"]
+            })
+        else:
+            # 没有学习的日期
+            data_points.append({
+                "date": date_key,
+                "progress": 0,
+                "timeSpent": 0,
+                "avgScore": None
+            })
+
+        current_date += timedelta(days=1)
+
+    return {
+        "data_points": data_points,
+        "days": days,
+        "total_study_days": len([d for d in data_points if d["timeSpent"] > 0])
+    }

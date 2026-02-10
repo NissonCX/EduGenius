@@ -30,35 +30,13 @@ interface StudyCurveProps {
 }
 
 export function StudyCurve({ data = [] }: StudyCurveProps) {
-  const [timeRange, setTimeRange] = useState<'week' | 'month' | 'all'>('week')
-
-  // 生成示例数据（直接在 useMemo 中定义）
-  const sampleData = useMemo(() => {
-    const result: DataPoint[] = []
-    const today = new Date()
-
-    for (let i = 29; i >= 0; i--) {
-      const date = new Date(today)
-      date.setDate(date.getDate() - i)
-
-      // 使用固定的种子避免随机变化
-      const baseProgress = 20 + (30 - i) * 2.5
-      const baseTime = 30 + (i % 7) * 10  // 基于索引的确定性值
-
-      result.push({
-        date: date.toISOString().split('T')[0],
-        progress: Math.min(100, Math.round(baseProgress)),
-        timeSpent: Math.round(baseTime),
-        avgScore: Math.round(60 + (i % 4) * 10)
-      })
-    }
-
-    return result
-  }, [])
+  const [timeRange, setTimeRange] = useState<'week' | 'month' | 'all'>('month')
 
   // 根据时间范围过滤数据
   const chartData = useMemo(() => {
-    const useData = data.length > 0 ? data : sampleData
+    if (data.length === 0) {
+      return []
+    }
 
     const now = new Date()
     let days = 7
@@ -70,8 +48,8 @@ export function StudyCurve({ data = [] }: StudyCurveProps) {
     const cutoffDate = new Date(now)
     cutoffDate.setDate(cutoffDate.getDate() - days)
 
-    return useData.filter(d => new Date(d.date) >= cutoffDate)
-  }, [data, timeRange, sampleData])
+    return data.filter(d => new Date(d.date) >= cutoffDate)
+  }, [data, timeRange])
 
   // 格式化日期显示
   const formatDate = (dateStr: string) => {

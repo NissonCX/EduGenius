@@ -20,6 +20,8 @@ export default function DashboardPage() {
   const [availableDocuments, setAvailableDocuments] = useState<any[]>([])
   const [selectedDocumentId, setSelectedDocumentId] = useState<number | null>(null)
   const [recentActivities, setRecentActivities] = useState<any[]>([])
+  const [studyDays, setStudyDays] = useState<any[]>([])
+  const [studyCurveData, setStudyCurveData] = useState<any[]>([])
 
   // 获取用户当前风格（从后端获取，不可修改）
   const teachingStyle = user?.teachingStyle || 3
@@ -55,12 +57,14 @@ export default function DashboardPage() {
         }
 
         // 并行获取数据
-        const [competency, graph, stats, mistakes, activities] = await Promise.all([
+        const [competency, graph, stats, mistakes, activities, calendarData, curveData] = await Promise.all([
           fetchCompetencyData(user.id, documentId, token || undefined),
           fetchKnowledgeGraph(user.id, documentId, 1, token || undefined),
           fetchUserStats(user.id, token || undefined),
           fetchMistakeStats(token || undefined),
-          fetchRecentActivities(user.id, token || undefined)
+          fetchRecentActivities(user.id, token || undefined),
+          fetchStudyCalendar(user.id, token || undefined),
+          fetchStudyCurve(user.id, token || undefined)
         ])
 
         setCompetencyData(competency)
@@ -68,6 +72,8 @@ export default function DashboardPage() {
         setUserStats(stats)
         setMistakeStats(mistakes)
         setRecentActivities(activities)
+        setStudyDays(calendarData)
+        setStudyCurveData(curveData)
       } catch (error) {
         console.error('Error loading dashboard data:', error)
       } finally {
@@ -276,6 +282,62 @@ export default function DashboardPage() {
     }
   }
 
+  // 获取学习日历数据
+  const fetchStudyCalendar = async (userId: number, token?: string) => {
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+
+      const response = await fetch(
+        getApiUrl(`/api/users/${userId}/study-calendar?weeks=12`),
+        { headers }
+      )
+
+      if (response.ok) {
+        const data = await response.json()
+        return data.study_days || []
+      } else {
+        console.warn('获取学习日历失败，返回空数组')
+        return []
+      }
+    } catch (error) {
+      console.error('获取学习日历失败:', error)
+      return []
+    }
+  }
+
+  // 获取学习曲线数据
+  const fetchStudyCurve = async (userId: number, token?: string) => {
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      }
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+
+      const response = await fetch(
+        getApiUrl(`/api/users/${userId}/study-curve?days=30`),
+        { headers }
+      )
+
+      if (response.ok) {
+        const data = await response.json()
+        return data.data_points || []
+      } else {
+        console.warn('获取学习曲线失败，返回空数组')
+        return []
+      }
+    } catch (error) {
+      console.error('获取学习曲线失败:', error)
+      return []
+    }
+  }
+
   const handleNodeClick = (node: any) => {
     console.log('Clicked node:', node)
     // 可以在这里添加导航到具体章节的逻辑
@@ -418,7 +480,7 @@ export default function DashboardPage() {
               transition={{ duration: 0.3 }}
               className="p-4 sm:p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-200"
             >
-              <StudyCalendar weeks={12} />
+              <StudyCalendar studyDays={studyDays} weeks={12} />
             </motion.div>
 
             {/* 学习曲线 */}
@@ -428,7 +490,7 @@ export default function DashboardPage() {
               transition={{ duration: 0.3, delay: 0.1 }}
               className="p-4 sm:p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-200"
             >
-              <StudyCurve />
+              <StudyCurve data={studyCurveData} />
             </motion.div>
           </div>
         </motion.div>
