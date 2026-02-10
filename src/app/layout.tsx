@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import '@/styles/globals.css'
 import 'katex/dist/katex.min.css'
@@ -19,18 +19,19 @@ export const metadata: Metadata = {
   title: 'EduGenius - AI 自适应教育平台',
   description: '基于 LangGraph 多智能体架构的高端 AI 自适应学习平台',
   manifest: '/manifest.json',
-  themeColor: '#000000',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
     title: 'EduGenius',
   },
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 1,
-    userScalable: false,
-  },
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  themeColor: '#000000',
 }
 
 export default function RootLayout({
