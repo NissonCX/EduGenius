@@ -99,17 +99,33 @@ class ExaminerAgent:
 请生成 {num_questions} 道检测题。"""
 
         try:
+            from app.core.logging_config import get_logger
+            logger = get_logger(__name__)
+
+            logger.info(f"开始调用 LLM 生成 {num_questions} 道题目...")
             response = await self.llm.ainvoke([
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ])
+            logger.info(f"LLM 响应成功，内容长度: {len(response.content) if response.content else 0}")
+            logger.info(f"=== LLM 完整响应开始 ===")
+            logger.info(response.content)
+            logger.info(f"=== LLM 完整响应结束 ===")
 
             # Parse questions from response
             questions = self._parse_questions(response.content)
+            logger.info(f"解析出 {len(questions)} 道题目")
 
-            return questions if questions else self._generate_fallback_questions(num_questions)
+            if not questions:
+                logger.warning(f"未能从 LLM 响应中解析出题目，使用 fallback")
+                return self._generate_fallback_questions(num_questions, error="解析失败")
+
+            return questions
 
         except Exception as e:
+            from app.core.logging_config import get_logger
+            logger = get_logger(__name__)
+            logger.error(f"LLM 生成题目异常: {type(e).__name__}: {str(e)}", exc_info=True)
             # Fallback to simpler questions
             return self._generate_fallback_questions(num_questions, error=str(e))
 
@@ -165,18 +181,74 @@ class ExaminerAgent:
     def _parse_questions(self, response_text: str) -> List[Dict[str, Any]]:
         """Parse questions from LLM response."""
         import json
-        import re
 
-        # Try to extract JSON from response
+        from app.core.logging_config import get_logger
+        logger = get_logger(__name__)
+
+        logger.info(f"开始解析 LLM 响应，原始内容长度: {len(response_text)}")
+
+        # 方法1：直接尝试解析整个响应
         try:
-            # Find JSON array in response
-            json_match = re.search(r'\[.*?\]', response_text, re.DOTALL)
-            if json_match:
-                questions = json.loads(json_match.group())
+            questions = json.loads(response_text.strip())
+            if isinstance(questions, list) and len(questions) > 0:
+                logger.info(f"直接解析成功，获得 {len(questions)} 道题目")
                 return questions
-        except:
-            pass
+        except json.JSONDecodeError:
+            logger.debug("直接解析失败，尝试提取 JSON 片段")
 
+        # 方法2：智能查找 JSON 数组（处理嵌套的 []）
+        def extract_json_array(text: str) -> str:
+            """智能提取完整的 JSON 数组，处理嵌套情况"""
+            start_idx = text.find('[')
+            if start_idx == -1:
+                return None
+
+            bracket_count = 0
+            in_string = False
+            escape_next = False
+
+            for i in range(start_idx, len(text)):
+                char = text[i]
+
+                if escape_next:
+                    escape_next = False
+                    continue
+
+                if char == '\\':
+                    escape_next = True
+                    continue
+
+                if char == '"' and not escape_next:
+                    in_string = not in_string
+                    continue
+
+                if not in_string:
+                    if char == '[':
+                        bracket_count += 1
+                    elif char == ']':
+                        bracket_count -= 1
+                        if bracket_count == 0:
+                            # 找到完整的数组
+                            return text[start_idx:i+1]
+
+            return None
+
+        try:
+            json_str = extract_json_array(response_text)
+            if json_str:
+                logger.info(f"找到 JSON 片段，长度: {len(json_str)}")
+                questions = json.loads(json_str)
+                logger.info(f"JSON 解析成功，获得 {len(questions)} 道题目")
+                return questions
+            else:
+                logger.warning("未在响应中找到完整的 JSON 数组")
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON 解析失败: {e}")
+            logger.debug(f"尝试解析的 JSON: {json_str[:500] if json_str else 'N/A'}...")
+        except Exception as e:
+            logger.error(f"解析异常: {type(e).__name__}: {e}")
+
+        logger.warning("未能解析出任何题目，将使用 fallback")
         return []
 
     def _generate_fallback_questions(
