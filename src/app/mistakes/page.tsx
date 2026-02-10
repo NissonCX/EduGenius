@@ -12,6 +12,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { MistakeCard } from '@/components/mistakes'
 import { safeFetch } from '@/lib/errors'
 import { getApiUrl } from '@/lib/config'
+import { TableSkeleton } from '@/components/ui/Skeleton'
 
 interface Mistake {
   id: number
@@ -303,9 +304,7 @@ export default function MistakesPage() {
               </motion.div>
             </div>
           ) : (
-            <div className="h-32 flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
-            </div>
+            <TableSkeleton rows={3} cols={4} />
           )}
         </div>
       </section>
@@ -366,8 +365,8 @@ export default function MistakesPage() {
       <section className="px-8 py-8">
         <div className="max-w-6xl">
           {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-black"></div>
+            <div className="px-8 py-8">
+              <TableSkeleton rows={5} cols={1} />
             </div>
           ) : mistakes.length === 0 ? (
             <div className="text-center py-20">

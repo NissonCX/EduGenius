@@ -7,6 +7,7 @@ import { Quiz, QuizResult } from '@/components/quiz';
 import { safeFetch } from '@/lib/errors';
 import { useAuth } from '@/contexts/AuthContext';
 import { getApiUrl } from '@/lib/config';
+import { Skeleton, ChatListSkeleton } from '@/components/ui/Skeleton';
 
 interface Question {
   id: number;
@@ -170,10 +171,16 @@ function QuizPageContent() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-black mx-auto mb-4"></div>
-          <p className="text-gray-600">加载题目中...</p>
+      <div className="min-h-screen bg-white p-8">
+        <div className="max-w-3xl mx-auto">
+          {/* 标题骨架 */}
+          <div className="mb-8">
+            <Skeleton className="h-8 w-48 mb-2" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+
+          {/* 题目骨架 */}
+          <ChatListSkeleton count={3} />
         </div>
       </div>
     );

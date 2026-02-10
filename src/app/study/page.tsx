@@ -20,6 +20,7 @@ import { SubsectionSelector } from '@/components/study/SubsectionSelector'
 import { ProgressCard } from '@/components/progress/ProgressCard'
 import { useAuth } from '@/contexts/AuthContext'
 import Link from 'next/link'
+import { DocumentListSkeleton, ChapterListSkeleton } from '@/components/ui/Skeleton'
 
 interface Document {
   id: number
@@ -312,9 +313,7 @@ function StudyPageContent() {
 
           {/* 文档列表 */}
           {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-            </div>
+            <DocumentListSkeleton count={6} />
           ) : documents.length === 0 ? (
             <div className="text-center py-20">
               <BookOpen className="w-16 h-16 text-gray-300 mx-auto mb-4" />
@@ -387,9 +386,7 @@ function StudyPageContent() {
 
           {/* 章节列表 */}
           {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-            </div>
+            <ChapterListSkeleton count={6} />
           ) : (
             <>
               {/* 分页的章节列表 */}
