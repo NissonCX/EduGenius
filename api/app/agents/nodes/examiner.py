@@ -198,7 +198,7 @@ class ExaminerAgent:
 
         # 方法2：智能查找 JSON 数组（处理嵌套的 []）
         def extract_json_array(text: str) -> str:
-            """智能提取完整的 JSON 数组，处理嵌套情况"""
+            """智能提取完整的 JSON 数组，处理嵌套和转义字符"""
             start_idx = text.find('[')
             if start_idx == -1:
                 return None
@@ -210,18 +210,22 @@ class ExaminerAgent:
             for i in range(start_idx, len(text)):
                 char = text[i]
 
+                # 如果前一个字符是转义符，跳过当前字符
                 if escape_next:
                     escape_next = False
                     continue
 
+                # 遇到转义符
                 if char == '\\':
                     escape_next = True
                     continue
 
-                if char == '"' and not escape_next:
+                # 遇到引号（只在非转义时切换字符串状态）
+                if char == '"':
                     in_string = not in_string
                     continue
 
+                # 不在字符串内时处理括号
                 if not in_string:
                     if char == '[':
                         bracket_count += 1

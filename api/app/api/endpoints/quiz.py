@@ -133,6 +133,9 @@ async def generate_questions(
             detail="文档不存在"
         )
 
+    # 初始化章节标题（用于 fallback）
+    chapter_title = None
+
     try:
         # 获取章节/小节内容和标题
         chapter_title, chapter_content = await _get_chapter_content_for_generation(
@@ -229,14 +232,14 @@ async def generate_questions(
         for q in saved_questions:
             await db.refresh(q)
 
-        logger.info(f"成功生成并保存 {len(saved_questions)} 道题目")
+        logger.info(f"✓ 成功生成并保存 {len(saved_questions)} 道题目")
         return saved_questions
 
     except Exception as e:
-        logger.error(f"AI生成题目失败: {e}", exc_info=True)
+        logger.error(f"❌ AI生成题目失败: {type(e).__name__}: {str(e)}", exc_info=True)
         # 降级：返回示例题目作为备选方案
-        logger.warning("降级到示例题目生成")
-        return await _generate_fallback_questions(request, db)
+        logger.warning("⚠️  降级到示例题目生成")
+        return await _generate_fallback_questions(request, db, chapter_title)
 
 
 async def _get_chapter_content_for_generation(
@@ -325,27 +328,60 @@ AI 可以利用自身的知识库，围绕这个主题出题，不需要查看�
 
 
 
-async def _generate_fallback_questions(request: QuestionGenerate, db: AsyncSession) -> List[Question]:
-    """降级方案：生成示例题目"""
+async def _generate_fallback_questions(request: QuestionGenerate, db: AsyncSession, chapter_title: str = None) -> List[Question]:
+    """
+    降级方案：生成示例题目
+
+    当 AI 生成失败时使用，生成基于章节标题的基础题目
+    """
     questions = []
+
+    # 获取章节标题用于生成更合理的题目
+    if not chapter_title:
+        progress_result = await db.execute(
+            select(Progress).where(
+                Progress.document_id == request.document_id,
+                Progress.chapter_number == request.chapter_number
+            )
+        )
+        progress = progress_result.scalar_one_or_none()
+        chapter_title = progress.chapter_title if progress else f"第{request.chapter_number}章"
+
     for i in range(request.count):
+        # 基于章节标题生成题目
+        question_text = f"关于"{chapter_title}"的测试题 {i+1}"
+        if request.subsection_number:
+            question_text = f"关于"{chapter_title}"（{request.subsection_number}）的测试题 {i+1}"
+
+        # 生成简单的选项
+        options_dict = {
+            "A": f"关于{chapter_title}的正确陈述",
+            "B": f"关于{chapter_title}的错误陈述",
+            "C": f"关于{chapter_title}的不完整陈述",
+            "D": f"关于{chapter_title}的其他相关陈述"
+        }
+
         question = Question(
             document_id=request.document_id,
             chapter_number=request.chapter_number,
+            subsection_number=request.subsection_number,
             question_type=request.question_type,
-            question_text=f"第{request.chapter_number}章示例题目 {i+1}",
-            options=json.dumps({"A": "选项A", "B": "选项B", "C": "选项C", "D": "选项D"}) if request.question_type == "choice" else None,
-            correct_answer="A" if request.question_type == "choice" else "示例答案",
-            explanation=f"这是题目 {i+1} 的解析",
+            question_text=question_text,
+            options=json.dumps(options_dict) if request.question_type == "choice" else None,
+            correct_answer="A",
+            explanation=f"这是基于章节主题"{chapter_title}"生成的示例题目。\n\n【注意】AI 自动生成功能暂时不可用，这是备用题目。\n建议稍后重试或使用"学习"功能后再测试。",
             difficulty=request.difficulty,
-            competency_dimension=classify_question_dimension(f"示例题目 {i+1}"),
+            competency_dimension=classify_question_dimension(chapter_title),
             created_by="AI_Fallback"
         )
         db.add(question)
         questions.append(question)
+
     await db.commit()
     for q in questions:
         await db.refresh(q)
+
+    logger.warning(f"⚠️  已生成 {len(questions)} 道 fallback 题目（章节：{chapter_title}）")
     return questions
 
 
