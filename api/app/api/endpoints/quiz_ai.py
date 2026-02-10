@@ -28,8 +28,7 @@ async def get_chapter_content(document_id: int, chapter_number: int, db: AsyncSe
     Returns:
         tuple: (chapter_title, chapter_content)
     """
-    from app.models.document import ConversationHistory
-    import json
+    from app.models.document import Progress, ConversationHistory
 
     # 获取文档
     result = await db.execute(
@@ -44,60 +43,131 @@ async def get_chapter_content(document_id: int, chapter_number: int, db: AsyncSe
         )
 
     default_title = f"第{chapter_number}章"
-    default_content = f"第{chapter_number}章内容，来自文档：{doc.title}"
+    default_content = f"第{chapter_number}章内容"
 
-    # 优先从文档的章节JSON中获取内容
-    if doc.chapters_json:
+    # 方法1：从 ChromaDB 获取章节内容
+    try:
+        import chromadb
+        from app.core.config import settings
+
+        chroma_client = chromadb.PersistentClient(path=settings.CHROMA_PERSIST_DIR)
+        collection_name = doc.chroma_collection_name or f"doc_{doc.md5_hash}"
+
         try:
-            chapters = json.loads(doc.chapters_json)
-            for chapter in chapters:
-                if chapter.get('chapter_number') == chapter_number:
-                    title = chapter.get('title', default_title)
-                    content = chapter.get('content', '')
-                    subsections = chapter.get('subsections', [])
+            collection = chroma_client.get_collection(collection_name)
 
-                    # 构建完整内容
-                    chapter_text = f"第{chapter_number}章：{title}\n\n"
-                    chapter_text += content[:3000]  # 限制内容长度，避免超过token限制
+            # 获取该章节的所有内容
+            results = collection.get(
+                where={"chapter": chapter_number},
+                include=["documents", "metadatas"]
+            )
 
-                    if subsections:
-                        chapter_text += "\n\n小节目录：\n"
-                        for sub in subsections[:5]:  # 最多5个小节
-                            chapter_text += f"- {sub.get('title', '')}\n"
+            if results and results.get('documents'):
+                # 合并所有文档片段
+                content_parts = []
+                for i, doc_text in enumerate(results['documents'][:20]):  # 最多取20个片段
+                    if doc_text:
+                        content_parts.append(doc_text)
 
-                    logger.info(f"从文档章节JSON中获取内容: {title}")
-                    return title, chapter_text
+                if content_parts:
+                    chapter_content = "\n\n".join(content_parts)
+                    # 从 Progress 获取章节标题
+                    progress_result = await db.execute(
+                        select(Progress).where(
+                            Progress.document_id == document_id,
+                            Progress.chapter_number == chapter_number
+                        )
+                    )
+                    progress = progress_result.scalar_one_or_none()
+                    title = progress.chapter_title if progress else default_title
+
+                    logger.info(f"从 ChromaDB 获取到章节 {chapter_number} 内容，{len(chapter_content)} 字符")
+                    return title, chapter_content[:5000]  # 限制长度
+
         except Exception as e:
-            logger.warning(f"解析章节JSON失败: {e}")
+            logger.debug(f"从 ChromaDB 获取内容失败: {e}")
 
-    # 备选方案：从对话历史中获取AI讲解内容
+    except ImportError:
+        logger.debug("ChromaDB 未安装")
+    except Exception as e:
+        logger.warning(f"ChromaDB 查询异常: {e}")
+
+    # 方法2：从对话历史中获取相关内容
     history_result = await db.execute(
         select(ConversationHistory)
         .where(
             ConversationHistory.document_id == document_id,
             ConversationHistory.chapter_number == chapter_number,
-            ConversationHistory.role == 'assistant'  # 只获取AI的回复
+            ConversationHistory.role == 'assistant'
         )
         .order_by(ConversationHistory.created_at.desc())
-        .limit(5)
+        .limit(10)
     )
     conversations = history_result.scalars().all()
 
     if conversations:
-        content_parts = []
-        for conv in conversations:
-            if conv.content:
-                content_parts.append(conv.content)
-
+        # 拼接最近的对话内容
+        content_parts = [conv.content for conv in conversations if conv.content]
         if content_parts:
-            chapter_text = f"第{chapter_number}章 内容摘要（来自对话历史）\n\n"
-            chapter_text += "\n\n".join(content_parts)
-            logger.info(f"从对话历史中获取内容: {len(content_parts)} 条对话")
-            return default_title, chapter_text[:4000]  # 限制长度
+            logger.info(f"从对话历史获取到章节 {chapter_number} 内容，{len(content_parts)} 条对话")
+            return default_title, "\n\n".join(content_parts[:5])
 
-    # 最终降级方案：返回章节标题
-    logger.warning(f"无法获取章节内容，使用降级方案: 第{chapter_number}章")
-    return default_title, default_content
+    # 方法3：从原始 PDF 文件提取内容
+    try:
+        import os
+        from app.services.document_extractors import extract_text_from_file
+
+        # 查找上传的文件
+        upload_dir = os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
+        if os.path.exists(upload_dir):
+            # 尝试匹配文件
+            for filename in os.listdir(upload_dir):
+                filepath = os.path.join(upload_dir, filename)
+                if os.path.isfile(filepath) and doc.filename in filename:
+                    try:
+                        # 提取文本
+                        text = extract_text_from_file(filepath)
+                        if text and len(text) > 100:
+                            logger.info(f"从 PDF 文件提取到 {len(text)} 字符")
+                            # 返回全部文本，让 AI 基于章节号生成相关题目
+                            return default_title, f"文档内容：\n\n{text[:10000]}"
+                    except Exception as e:
+                        logger.debug(f"提取文件内容失败: {e}")
+    except ImportError:
+        logger.debug("文档提取服务不可用")
+    except Exception as e:
+        logger.warning(f"从文件提取内容异常: {e}")
+
+    # 方法4：从 Progress 获取章节标题
+    progress_result = await db.execute(
+        select(Progress).where(
+            Progress.document_id == document_id,
+            Progress.chapter_number == chapter_number
+        )
+    )
+    progress = progress_result.scalar_one_or_none()
+
+    title = progress.chapter_title if progress else default_title
+
+    # 给出清晰的提示
+    logger.warning(f"章节 {chapter_number} 无可用内容，建议用户先学习")
+
+    # 返回提示性内容
+    prompt = f"""
+【提示】此章节暂时没有可直接用于生成题目的内容。
+
+建议：
+1. 先使用"学习"功能学习此章节
+2. 学习后系统会记录内容，然后可以生成测试题
+
+章节信息：
+- 标题：{title}
+- 文档：{doc.title or '未命名文档'}
+
+请基于章节标题"{title}"，生成一些基础的测试题目。
+    """.strip()
+
+    return title, prompt
 
 
 @router.post("/generate-ai-questions")
