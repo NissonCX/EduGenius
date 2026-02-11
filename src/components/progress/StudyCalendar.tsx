@@ -71,6 +71,18 @@ export function StudyCalendar({ studyDays = [], weeks = 12 }: StudyCalendarProps
   // 获取星期几标签
   const weekDays = ['日', '一', '二', '三', '四', '五', '六']
 
+  // 如果没有数据且不是加载状态，显示提示
+  if (studyDays.length === 0) {
+    return (
+      <div className="w-full">
+        <div className="bg-white border border-gray-200 rounded-xl p-8 text-center">
+          <p className="text-gray-500">暂无学习记录</p>
+          <p className="text-xs text-gray-400 mt-2">开始学习后将自动记录</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="w-full">
       {/* 标题和统计 */}

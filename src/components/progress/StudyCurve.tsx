@@ -35,6 +35,18 @@ export function StudyCurve({ data = [] }: StudyCurveProps) {
 
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'all'>('month')
 
+  // 如果没有数据，显示提示
+  if (data.length === 0) {
+    return (
+      <div className="w-full">
+        <div className="bg-white border border-gray-200 rounded-xl p-8 text-center">
+          <p className="text-gray-500">暂无学习数据</p>
+          <p className="text-xs text-gray-400 mt-2">开始学习后将自动记录</p>
+        </div>
+      </div>
+    )
+  }
+
   // 根据时间范围过滤数据
   const chartData = useMemo(() => {
     if (data.length === 0) {
