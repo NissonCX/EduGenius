@@ -133,7 +133,7 @@ export function StudyChat({
     }
 
     loadHistory()
-  }, [userId, chapterId])
+  }, [userId, chapterId, subsectionId])
 
   // 🔥 组件卸载时清理 SSE 连接 - 防止内存泄漏
   useEffect(() => {
