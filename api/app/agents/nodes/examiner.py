@@ -181,6 +181,7 @@ class ExaminerAgent:
     def _parse_questions(self, response_text: str) -> List[Dict[str, Any]]:
         """Parse questions from LLM response."""
         import json
+        import re
 
         from app.core.logging_config import get_logger
         logger = get_logger(__name__)
@@ -237,13 +238,70 @@ class ExaminerAgent:
 
             return None
 
+        # 方法3：修复 JSON 字符串中的无效转义（如 LaTeX 公式）
+        def fix_invalid_escapes(json_str: str) -> str:
+            r"""
+            修复 JSON 字符串中的无效转义序列
+
+            LLM 可能返回类似 "计算 $\int_0^1 x^2 dx$" 的内容
+            其中的 \int 在 JSON 中是无效转义，需要改为 \\int
+            """
+            if not json_str:
+                return json_str
+
+            # 找出所有有效的 JSON 转义序列
+            valid_escapes = {'"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'}
+
+            result = []
+            i = 0
+            while i < len(json_str):
+                if json_str[i] == '\\' and i + 1 < len(json_str):
+                    next_char = json_str[i + 1]
+
+                    # 检查是否是有效的转义序列
+                    if next_char in valid_escapes:
+                        # 有效的转义，保留
+                        result.append(json_str[i])
+                        i += 1
+                        result.append(json_str[i])
+                        i += 1
+                        continue
+                    elif next_char == 'u' and i + 5 < len(json_str):
+                        # Unicode 转义 \uXXXX，保留
+                        result.append(json_str[i:i+6])
+                        i += 6
+                        continue
+                    else:
+                        # 无效的转义（如 LaTeX 命令），双写反斜杠使其有效
+                        result.append('\\\\')
+                        i += 1
+                        continue
+
+                result.append(json_str[i])
+                i += 1
+
+            return ''.join(result)
+
         try:
             json_str = extract_json_array(response_text)
             if json_str:
                 logger.info(f"找到 JSON 片段，长度: {len(json_str)}")
-                questions = json.loads(json_str)
-                logger.info(f"JSON 解析成功，获得 {len(questions)} 道题目")
-                return questions
+
+                # 尝试直接解析
+                try:
+                    questions = json.loads(json_str)
+                    logger.info(f"JSON 解析成功，获得 {len(questions)} 道题目")
+                    return questions
+                except json.JSONDecodeError as e:
+                    logger.warning(f"直接解析失败: {e}，尝试修复无效转义")
+
+                    # 修复无效转义后重试
+                    fixed_json = fix_invalid_escapes(json_str)
+                    logger.debug(f"修复后的 JSON: {fixed_json[:200]}...")
+
+                    questions = json.loads(fixed_json)
+                    logger.info(f"修复后解析成功，获得 {len(questions)} 道题目")
+                    return questions
             else:
                 logger.warning("未在响应中找到完整的 JSON 数组")
         except json.JSONDecodeError as e:
