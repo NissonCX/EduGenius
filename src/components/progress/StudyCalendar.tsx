@@ -21,6 +21,9 @@ interface StudyCalendarProps {
 }
 
 export function StudyCalendar({ studyDays = [], weeks = 12 }: StudyCalendarProps) {
+  // 🔍 调试日志
+  console.log('StudyCalendar 渲染，studyDays:', studyDays.length, '条')
+
   // 使用 useMemo 缓存日历数据生成
   const calendarData = useMemo(() => {
     const data: StudyDay[] = []
@@ -161,10 +164,5 @@ export function StudyCalendar({ studyDays = [], weeks = 12 }: StudyCalendarProps
   )
 }
 
-// 使用 React.memo 优化性能
-export default React.memo(StudyCalendar, (prevProps, nextProps) => {
-  return (
-    prevProps.studyDays === nextProps.studyDays &&
-    prevProps.weeks === nextProps.weeks
-  )
-})
+// 简化 memo - 移除有问题的比较函数，让 React 自动处理
+export default React.memo(StudyCalendar)

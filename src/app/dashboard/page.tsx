@@ -74,6 +74,12 @@ export default function DashboardPage() {
         setRecentActivities(activities)
         setStudyDays(calendarData)
         setStudyCurveData(curveData)
+
+        // 🔍 调试日志
+        console.log('📊 学习日历数据:', calendarData)
+        console.log('📈 学习曲线数据:', curveData)
+        console.log('📅 学习日历条目数:', calendarData?.length || 0)
+        console.log('📉 学习曲线条目数:', curveData?.length || 0)
       } catch (error) {
         console.error('Error loading dashboard data:', error)
       } finally {

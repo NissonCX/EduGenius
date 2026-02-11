@@ -30,6 +30,9 @@ interface StudyCurveProps {
 }
 
 export function StudyCurve({ data = [] }: StudyCurveProps) {
+  // 🔍 调试日志
+  console.log('StudyCurve 渲染，data:', data.length, '条')
+
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'all'>('month')
 
   // 根据时间范围过滤数据
