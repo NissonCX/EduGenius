@@ -676,6 +676,16 @@ async def get_user_history(
     if chapter_number:
         query = query.where(ConversationHistory.chapter_number == chapter_number)
 
+    # 🔧 调试日志
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"📊 查询历史对话 - user_id: {user_id}, chapter_number: {chapter_number}, subsection_id: '{subsection_id}' (type: {type(subsection_id).__name__})")
+
+    # 只有当 subsection_id 存在且不为空字符串时才添加过滤条件
+    if subsection_id and subsection_id.strip():
+        query = query.where(ConversationHistory.subsection_id == subsection_id)
+        logger.info(f"✅ 已添加 subsection_id 过滤条件: '{subsection_id}'")
+
     query = query.order_by(ConversationHistory.created_at).limit(50)
 
     result = await db.execute(query)

@@ -89,18 +89,21 @@ export function StudyChat({
       }
 
       try {
-        // 🔧 修复：添加 subsectionId 到查询参数（后端即将支持）
-        const subsectionParam = subsectionId ? `&subsection_id=${subsectionId}` : ''
-        const response = await fetch(
-          getApiUrl(`/api/users/${userId}/history?chapter_number=${chapterId}${subsectionParam}`),
-          {
-            headers: getAuthHeadersSimple()
-          }
-        )
+        // 🔧 修复：添加 subsectionId 到查询参数
+        // 只有当 subsectionId 存在且不为空字符串时才添加
+        const subsectionParam = (subsectionId && subsectionId.trim() !== '') ? `&subsection_id=${subsectionId}` : ''
+        const requestUrl = getApiUrl(`/api/users/${userId}/history?chapter_number=${chapterId}${subsectionParam}`)
+        console.log('📡 加载历史对话 URL:', requestUrl)
+        console.log('📊 subsectionId 值:', subsectionId)
+        console.log('🔗 subsectionParam:', subsectionParam)
+        const response = await fetch(requestUrl, {
+          headers: getAuthHeadersSimple()
+        })
 
         if (response.ok) {
           const data = await response.json()
-          console.log('历史对话数据:', data) // 调试日志
+          console.log('📚 历史对话数据:', data) // 调试日志
+          console.log('📝 对话数量:', data.conversations?.length || 0)
 
           if (data.conversations && data.conversations.length > 0) {
             // 将历史对话转换为消息格式
