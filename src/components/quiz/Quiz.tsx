@@ -245,7 +245,7 @@ export default React.memo(function Quiz({ questions, onComplete, documentId, cha
           </div>
 
           {/* Options */}
-          {currentQuestion.question_type === 'choice' && currentQuestion.options && (
+          {(currentQuestion.question_type === 'choice' || currentQuestion.question_type === 'conceptual') && currentQuestion.options && (
             <div className="space-y-3">
               {Object.entries(currentQuestion.options).map(([key, value]) => (
                 <motion.button

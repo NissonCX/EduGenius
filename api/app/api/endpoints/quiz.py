@@ -205,7 +205,14 @@ async def generate_questions(
                     options_dict = options_raw
 
             # 获取题目类型和难度
-            question_type = q_data.get('question_type') or q_data.get('type') or request.question_type
+            raw_question_type = q_data.get('question_type') or q_data.get('type') or request.question_type
+            # 映射 AI 返回的类型到前端支持的类型
+            question_type_mapping = {
+                'conceptual': 'choice',  # 概念题作为选择题
+                'multiple_choice': 'choice',
+                'single_choice': 'choice',
+            }
+            question_type = question_type_mapping.get(raw_question_type, raw_question_type)
             difficulty = q_data.get('difficulty') or q_data.get('difficulty_level') or request.difficulty
 
             # 创建新题目
