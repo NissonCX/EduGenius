@@ -2,45 +2,44 @@
 
 ## ✅ 最新完成 (2025-02-11)
 
-### JSON 解析器修复
-**问题**: AI 返回的 JSON 中包含 LaTeX 公式（如 `\int`、`\frac`），导致 JSON 解析失败
+### 1. 学习进度更新修复
+- 修复 `completion_percentage: null` 问题
+- 每次学习对话发送 `completion_percentage: 5`
 
-**解决方案**: 在 `examiner.py` 中添加了 `fix_invalid_escapes()` 函数
-- 自动检测并修复无效的转义序列
-- 保留有效的 JSON 转义（如 `\n`、`\t`、`\"`）
-- 将无效转义（如 LaTeX 命令）双写为有效的 `\\`
+### 2. 学习日历组件
+**新增**: `src/components/calendar/StudyCalendar.tsx`
 
-**测试**: 创建了 `test_quiz_generation.py` 验证修复效果
-- ✅ 标准 JSON 解析
-- ✅ 包含转义引号
-- ✅ 包含 LaTeX 公式
-- ✅ LLM 响应包裹在 markdown 中
-- ✅ 包含换行符和特殊字符
+**设计特点**:
+- 符合项目简洁美学风格
+- 月份日历网格视图
+- 统计卡片：学习天数、总时长、活跃度
+- 活动强度等级 0-4（渐进绿色）
 
-### 前端工具库模块
-新增 `src/lib/` 工具库：
-- `api-client.ts`: 带自动刷新Token功能的API客户端
-- `api.ts`: 统一的API客户端工具，带重试和超时
-- `cache.ts`: 内存和LocalStorage缓存工具
-- `config.ts`: 应用配置管理
-- `errors.ts`: API错误处理和友好错误消息
-- `latex-processor.ts`: LaTeX公式处理
-- `utils.ts`: 工具函数
+**新增API**: `/api/users/{user_id}/activity-calendar?year={year}`
 
-同时添加单元测试文件（需安装 vitest 后运行）
+### 3. 题目类型修复
+- 后端: 将 AI 返回的 `conceptual` 映射为 `choice`
+- 前端: Quiz 组件支持 `conceptual` 类型显示选项
 
-## 下一步
+## 当前问题
 
-### LLM 题目生成测试
-- [ ] 测试实际 LLM 题目生成（运行 `python3 api/test_quiz_generation.py --with-llm`）
-- [ ] 验证前端题目生成 API 集成
+### 题目内容准确性 ❌
+**问题**: 概率论章节出现软件开发相关题目
 
-### 章节测试功能完善
-- [ ] 测试流程完整性
-- [ ] 添加更多测试用例
+**原因**: AI生成题目时未使用实际章节内容
+
+**位置**: `api/app/api/endpoints/quiz.py` `_get_chapter_content_for_generation`
+
+## 待办事项
+
+- [ ] 修复章节内容获取逻辑
+- [ ] 添加学习日历到仪表盘
+- [ ] 测试完整的学习流程
 
 ## 关键文件
-- `api/app/agents/nodes/examiner.py` - AI 题目生成核心（已修复）
-- `api/app/api/endpoints/quiz.py` - 题目生成 API
-- `api/test_quiz_generation.py` - 题目生成测试脚本
-- `src/lib/` - 前端工具库（新增）
+- `src/components/chat/StudyChat.tsx` - 学习进度更新（已修复）
+- `src/components/calendar/StudyCalendar.tsx` - 学习日历（新增）
+- `src/components/quiz/Quiz.tsx` - 题目显示（已修复）
+- `api/app/agents/nodes/examiner.py` - JSON解析器（已修复）
+- `api/app/api/endpoints/quiz.py` - 题目API（类型映射已修复）
+- `api/app/api/endpoints/users.py` - 活动日历API（新增）
