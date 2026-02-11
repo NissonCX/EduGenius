@@ -32,20 +32,9 @@ const katexOptions = {
 
 /**
  * 预处理 Markdown 内容，转换 LaTeX 格式
- * 新增：智能识别纯 LaTeX 代码
  */
 function preprocessMarkdown(content: string): string {
-  // 🔧 修复：清理后端可能产生的转义字符（如 \\frac → \\frac）
-    processed = processed.replace(/\\text{/g, '\\text{')
-    processed = processed.replace(/\\left/g, '\\left')
-    processed = processed.replace(/\\right/g, '\\right')
-    processed = processed.replace(/\\rightarrow/g, '\\rightarrow')
-    processed = processed.replace(/\\le/g, '\\le')
-    processed = processed.replace(/\\ge/g, '\\ge')
-    processed = processed.replace(/\\leq/g, '\\leq')
-    processed = processed.replace(/\\neq/g, '\\neq')
-
-    let processed = content
+  let processed = content
 
   // 1. 处理 \[ \] 格式（转换为块级公式）
   processed = processed.replace(/\\\[/g, '\n$$\n')
@@ -57,10 +46,6 @@ function preprocessMarkdown(content: string): string {
 
   // 3. 处理单独行的 [ ] 格式（转换为块级公式）
   processed = processed.replace(/^\s*\[\s*(.+?)\s*\]\s*$/gm, '\n$$1$$\n')
-
-  // 4. 修复已存在的 $$...$$ 格式中的转义字符
-  // 将 \\text{...} 中的 \\text 替换为 \text
-  processed = processed.replace(/\\text\{/g, '\\text{')
 
   return processed
 }

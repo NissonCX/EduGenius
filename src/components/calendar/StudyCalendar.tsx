@@ -112,7 +112,7 @@ export function StudyCalendar({ userId, documentId }: StudyCalendarProps) {
 
   // 获取颜色类（简化版本，符合项目风格）
   const getColorClass = (level: number) => {
-    const colors = {
+    const colors: Record<number, string> = {
       0: 'bg-gray-50',
       1: 'bg-emerald-100',
       2: 'bg-emerald-200',
