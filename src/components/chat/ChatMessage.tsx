@@ -37,29 +37,20 @@ const katexOptions = {
 function preprocessMarkdown(content: string): string {
   let processed = content
 
-  // 1. 转换 \[ \] 格式
+  // 1. 处理 \[ \] 格式（转换为块级公式）
   processed = processed.replace(/\\\[/g, '\n$$\n')
   processed = processed.replace(/\\\]/g, '\n$$\n')
-  
-  // 2. 转换单独行的 [ ] 格式
-  processed = processed.replace(/^\s*\[\s*(.+?)\s*\]\s*$/gm, '\n$$$$1$$\n')
 
-  // 3. 智能识别纯 LaTeX 代码（包含 \text, \rightarrow, \uparrow 等命令）
-  // 匹配包含 LaTeX 命令的行，但不在代码块或已有 $ 包裹的内容中
-  const latexCommandPattern = /^(?!.*```)(.*?\\(?:text|rightarrow|leftarrow|uparrow|downarrow|xrightarrow|xleftarrow|frac|sqrt|sum|int|Delta|alpha|beta|gamma|theta|lambda|mu|sigma|omega|cdot|times|div|pm|leq|geq|neq|approx|equiv|infty)\{?.*?)$/gm
-  
-  processed = processed.replace(latexCommandPattern, (match) => {
-    // 如果已经被 $ 包裹，不处理
-    if (match.includes('$$') || match.includes('$')) {
-      return match
-    }
-    // 如果在代码块中，不处理
-    if (match.includes('```')) {
-      return match
-    }
-    // 包裹为块级公式
-    return `$$${match.trim()}$$`
-  })
+  // 2. 处理 \( \) 格式（转换为行内公式）
+  processed = processed.replace(/\\\(/g, '$')
+  processed = processed.replace(/\\\)/g, '$')
+
+  // 3. 处理单独行的 [ ] 格式（转换为块级公式）
+  processed = processed.replace(/^\s*\[\s*(.+?)\s*\]\s*$/gm, '\n$$1$$\n')
+
+  // 4. 修复已存在的 $$...$$ 格式中的转义字符
+  // 将 \\text{...} 中的 \\text 替换为 \text
+  processed = processed.replace(/\\text\{/g, '\\text{')
 
   return processed
 }

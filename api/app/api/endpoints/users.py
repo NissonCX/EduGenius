@@ -297,31 +297,21 @@ async def get_or_create_progress(
 
     if not progress:
         # 创建新进度记录
-                        progress = Progress(
-            user_id=user_id,
-            document_id=document_id,
-            chapter_number=chapter_number,
-            chapter_title=chapter_title,
-            status=\"in_progress\",
-            completion_percentage=0\.0,
-            cognitive_level_assigned=None,
-            time_spent_minutes=0,
-            quiz_attempts=0,
-            quiz_success_rate=0\.0,
-            started_at=datetime\.now\(\),
-            last_accessed_at=datetime\.now\(\),
-            created_at=datetime\.now\(\)
-        \)
+        now = datetime.now()
+        progress = Progress(
             user_id=user_id,
             document_id=document_id,
             chapter_number=chapter_number,
             chapter_title=chapter_title,
             status="in_progress",
             completion_percentage=0.0,
-            cognitive_level_assigned=None,  # 将从用户获取
+            cognitive_level_assigned=None,
             time_spent_minutes=0,
             quiz_attempts=0,
-            quiz_success_rate=0.0
+            quiz_success_rate=0.0,
+            started_at=now,
+            last_accessed_at=now,
+            created_at=now
         )
         db.add(progress)
         await db.commit()

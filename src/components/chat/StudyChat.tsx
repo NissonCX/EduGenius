@@ -89,8 +89,10 @@ export function StudyChat({
       }
 
       try {
+        // 🔧 修复：添加 subsectionId 到查询参数（后端即将支持）
+        const subsectionParam = subsectionId ? `&subsection_id=${subsectionId}` : ''
         const response = await fetch(
-          getApiUrl(`/api/users/${userId}/history?chapter_number=${chapterId}`),
+          getApiUrl(`/api/users/${userId}/history?chapter_number=${chapterId}${subsectionParam}`),
           {
             headers: getAuthHeadersSimple()
           }
