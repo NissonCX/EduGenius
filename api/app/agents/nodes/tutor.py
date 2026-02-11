@@ -251,7 +251,7 @@ class TutorAgent:
         # Progressive hints based on attempt
         hint_templates = {
             1: {
-                1: "💡 提示：仔细阅读题目，关键信息就在题干中。",
+                1: "💡 g提示：仔细阅读题目，关键信息就在题干中。",
                 2: "💡 提示2：回忆一下本章节的核心概念。",
                 3: "💡 提示3：这道题考查的是基础知识点，再想想？"
             },
