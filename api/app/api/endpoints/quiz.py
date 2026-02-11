@@ -349,9 +349,9 @@ async def _generate_fallback_questions(request: QuestionGenerate, db: AsyncSessi
 
     for i in range(request.count):
         # 基于章节标题生成题目
-        question_text = f"关于"{chapter_title}"的测试题 {i+1}"
+        question_text = f'关于"{chapter_title}"的测试题 {i+1}'
         if request.subsection_number:
-            question_text = f"关于"{chapter_title}"（{request.subsection_number}）的测试题 {i+1}"
+            question_text = f'关于"{chapter_title}"（{request.subsection_number}）的测试题 {i+1}'
 
         # 生成简单的选项
         options_dict = {
@@ -369,7 +369,7 @@ async def _generate_fallback_questions(request: QuestionGenerate, db: AsyncSessi
             question_text=question_text,
             options=json.dumps(options_dict) if request.question_type == "choice" else None,
             correct_answer="A",
-            explanation=f"这是基于章节主题"{chapter_title}"生成的示例题目。\n\n【注意】AI 自动生成功能暂时不可用，这是备用题目。\n建议稍后重试或使用"学习"功能后再测试。",
+            explanation=f'这是基于章节主题"{chapter_title}"生成的示例题目。\n\n【注意】AI 自动生成功能暂时不可用，这是备用题目。\n建议稍后重试或使用"学习"功能后再测试。',
             difficulty=request.difficulty,
             competency_dimension=classify_question_dimension(chapter_title),
             created_by="AI_Fallback"
