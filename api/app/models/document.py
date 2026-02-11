@@ -154,6 +154,7 @@ class ConversationHistory(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     document_id = Column(Integer, ForeignKey("documents.id"), index=True)
     chapter_number = Column(Integer, index=True)
+    subsection_id = Column(String(50), index=True)  # 小节编号，如 "1.1"
 
     # 对话内容
     role = Column(String(20), nullable=False)  # 'user' or 'assistant'
@@ -169,6 +170,7 @@ class ConversationHistory(Base):
     __table_args__ = (
         Index('idx_conversation_user_doc', 'user_id', 'document_id'),
         Index('idx_conversation_user_chapter', 'user_id', 'document_id', 'chapter_number'),
+        Index('idx_conversation_subsection', 'user_id', 'document_id', 'chapter_number', 'subsection_id'),
     )
 
     def __repr__(self):

@@ -640,6 +640,7 @@ async def get_user_history(
     user_id: int,
     document_id: Optional[int] = None,
     chapter_number: Optional[int] = None,
+    subsection_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -648,6 +649,7 @@ async def get_user_history(
     - 返回对话记录
     - 返回用户当前等级
     - 返回能力雷达图数据
+    - 支持按小节筛选对话
     """
     # 获取用户信息
     from app.models.document import User as UserModel

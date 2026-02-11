@@ -1177,6 +1177,7 @@ async def chat_with_tutor(
                             user_id=user_id,
                             document_id=request.document_id or 1,
                             chapter_number=int(request.chapter_id),
+                            subsection_id=request.subsection_id or None,
                             role="user",
                             content=request.message,
                             student_level_at_time=request.student_level
@@ -1188,6 +1189,7 @@ async def chat_with_tutor(
                             user_id=user_id,
                             document_id=request.document_id or 1,
                             chapter_number=int(request.chapter_id),
+                            subsection_id=request.subsection_id or None,
                             role="assistant",
                             content=full_response,
                             student_level_at_time=request.student_level
