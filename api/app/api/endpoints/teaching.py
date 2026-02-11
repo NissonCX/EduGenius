@@ -432,7 +432,7 @@ async def start_teaching_session(
             async with asyncio.timeout(timeout_seconds):
                 async for event in stream_handler.stream_teaching_session(initial_state):
                     # Format as SSE
-                    event_data = json.dumps(event, ensure_ascii=False)
+                    event_data = json.dumps(event, ensure_ascii=True)
                     yield f"data: {event_data}\n\n"
 
                     # Small delay between events
