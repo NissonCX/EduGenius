@@ -165,6 +165,8 @@ export function StudyChat({
     if (!userId) return
 
     try {
+      // 获取当前进度并计算新的完成度
+      // 每次AI回复算作 5% 的学习进度
       await fetch(getApiUrl(`/api/users/${userId}/update-chapter-progress`), {
         method: 'POST',
         headers: getAuthHeadersSimple(),
@@ -173,9 +175,10 @@ export function StudyChat({
           chapter_number: parseInt(chapterId, 10),
           chapter_title: chapterTitle,
           time_spent_minutes: 1,
-          completion_percentage: null
+          completion_percentage: 5  // 每次对话增加 5% 完成度
         })
       })
+      console.log('✅ 学习进度已更新')
     } catch (progressError) {
       console.error('更新学习进度失败:', progressError)
     }

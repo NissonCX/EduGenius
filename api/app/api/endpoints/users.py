@@ -1598,3 +1598,114 @@ async def get_user_study_curve(
         "days": days,
         "total_study_days": len([d for d in data_points if d["timeSpent"] > 0])
     }
+
+
+# ============ 活动日历 API ============
+@router.get("/{user_id}/activity-calendar")
+async def get_activity_calendar(
+    user_id: int,
+    year: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    获取用户的活动日历（GitHub contribution graph风格）
+
+    返回12个月的数据，每个月包含每天的活动记录
+    """
+    from datetime import date, timedelta
+
+    # 该年的1月1日
+    start_date = datetime(year, 1, 1)
+    # 该年的12月31日
+    end_date = datetime(year, 12, 31)
+
+    # 获取该年的所有进度记录
+    progress_result = await db.execute(
+        select(Progress).where(
+            Progress.user_id == user_id,
+            Progress.last_study_at >= start_date,
+            Progress.last_study_at <= end_date
+        ).order_by(Progress.last_study_at)
+    )
+    progress_records = progress_result.scalars().all()
+
+    # 按月份组织数据
+    months_data = {}
+
+    for month_num in range(1, 13):  # 1-12月
+        # 获取该月第一天和总天数
+        first_day = date(year, month_num, 1)
+        if month_num == 12:
+            days_in_month = (date(year, 12, 31) - date(year, 12, 1)).days + 1
+        else:
+            days_in_month = (date(year, month_num + 1, 1) - date(year, month_num, 1)).days
+
+        # 初始化该月的所有天（level 0 = 无活动）
+        days = []
+        for day_num in range(1, days_in_month + 1):
+            current_date = date(year, month_num, day_num)
+            days.append({
+                "date": current_date.isoformat(),
+                "count": 0,  # 学习次数
+                "level": 0   # 活动强度 0-4
+            })
+
+        month_key = f"{year}-{month_num:02d}"
+        months_data[month_key] = {
+            "year": year,
+            "month": month_num,
+            "days": days
+        }
+
+    # 填充实际学习数据
+    for progress in progress_records:
+        if not progress.last_study_at:
+            continue
+
+        study_date = progress.last_study_at.date()
+        study_year = study_date.year
+        if study_year != year:
+            continue
+
+        study_month = study_date.month
+        study_day = study_date.day
+
+        month_key = f"{study_year}-{study_month:02d}"
+
+        if month_key in months_data:
+            # 找到对应的天并更新
+            day_index = study_day - 1
+            if day_index < len(months_data[month_key]["days"]):
+                days = months_data[month_key]["days"]
+                days[day_index]["count"] += 1
+
+                # 计算活动强度 level (0-4)
+                # 基于学习时长和完成度计算
+                time_spent = progress.time_spent_minutes or 0
+                completion = progress.completion_percentage or 0
+
+                # Level 0: 无活动
+                # Level 1: 轻度 (< 10分钟 或 完成度 < 10%)
+                # Level 2: 中度 (10-30分钟，完成度 10-30%)
+                # Level 3: 较强 (30-60分钟，完成度 30-60%)
+                # Level 4: 强烈 (> 60分钟 或 完成度 > 60%)
+                if time_spent < 10 and completion < 10:
+                    days[day_index]["level"] = max(days[day_index]["level"], 1)
+                elif time_spent < 30 or completion < 30:
+                    days[day_index]["level"] = max(days[day_index]["level"], 2)
+                elif time_spent < 60 or completion < 60:
+                    days[day_index]["level"] = max(days[day_index]["level"], 3)
+                else:
+                    days[day_index]["level"] = 4
+
+    # 将字典转为列表格式（按月份顺序）
+    months_list = []
+    for month_num in range(1, 13):
+        month_key = f"{year}-{month_num:02d}"
+        if month_key in months_data:
+            months_list.append(months_data[month_key])
+
+    return {
+        "year": year,
+        "months": months_list
+    }
