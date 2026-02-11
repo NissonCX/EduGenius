@@ -258,7 +258,7 @@ async def _get_chapter_content_for_generation(
     """
     获取章节/小节信息用于生成题目
 
-    AI 不需要 PDF 内容，只需要章节/小节标题就能出题
+    使用 ChromaDB 检索实际章节内容，确保 AI 生成与主题相关的题目
 
     Args:
         subsection_number: 小节编号（如 "1.1"），如果提供则生成小节级别的题目
@@ -267,6 +267,8 @@ async def _get_chapter_content_for_generation(
         tuple: (title, prompt)
     """
     from app.core.logging_config import get_logger
+    from app.core.chroma import search_documents
+    from dashscope import TextEmbedding
     logger = get_logger(__name__)
 
     # 获取文档信息
@@ -275,6 +277,75 @@ async def _get_chapter_content_for_generation(
     )
     document = document_result.scalar_one_or_none()
     document_title = document.title if document else "教材"
+    md5_hash = document.md5_hash if document else None
+
+    # 初始化章节内容
+    chapter_content = ""
+
+    # 如果有 ChromaDB，尝试检索实际内容
+    if md5_hash:
+        try:
+            # 构建查询文本，用于检索相关内容
+            if subsection_number:
+                # 先获取小节标题
+                from sqlalchemy import text
+                subsection_query = text("""
+                    SELECT subsection_title
+                    FROM subsections
+                    WHERE document_id = :document_id
+                      AND chapter_number = :chapter_number
+                      AND subsection_number = :subsection_number
+                    LIMIT 1
+                """)
+                result = await db.execute(
+                    subsection_query,
+                    {"document_id": document_id, "chapter_number": chapter_number, "subsection_number": subsection_number}
+                )
+                row = result.fetchone()
+
+                if row:
+                    subsection_title = row[0]
+                    query_text = f"{document_title} 第{chapter_number}章 {subsection_title} {subsection_number}"
+                else:
+                    query_text = f"{document_title} 第{chapter_number}章 {subsection_number}"
+            else:
+                # 获取章节标题
+                progress_result = await db.execute(
+                    select(Progress).where(
+                        Progress.document_id == document_id,
+                        Progress.chapter_number == chapter_number
+                    )
+                )
+                progress = progress_result.scalar_one_or_none()
+                chapter_title = progress.chapter_title if progress else f"第{chapter_number}章"
+                query_text = f"{document_title} {chapter_title}"
+
+            # 使用 DashScope 生成查询嵌入（与教学系统保持一致）
+            embed_response = TextEmbedding.call(
+                model='text-embedding-v2',
+                input=query_text,
+                text_type='document'
+            )
+
+            if embed_response.status_code == 200:
+                query_embedding = embed_response.output['embeddings'][0]['embedding']
+
+                # 从 ChromaDB 检索相关内容
+                from app.core.chroma import query_document_chunks
+                results = query_document_chunks(
+                    md5_hash=md5_hash,
+                    query_embedding=query_embedding,
+                    n_results=10  # 获取更多上下文
+                )
+
+                if results and results.get('documents'):
+                    # 合并检索到的文档片段
+                    chunks = results['documents'][0]
+                    chapter_content = "\n\n".join(chunks)
+                    logger.info(f"从 ChromaDB 检索到 {len(chunks)} 个相关文档片段，共 {len(chapter_content)} 字符")
+
+        except Exception as e:
+            logger.warning(f"从 ChromaDB 检索内容失败: {e}，将使用章节标题生成")
 
     # 如果指定了小节，获取小节标题
     if subsection_number:
@@ -300,7 +371,19 @@ async def _get_chapter_content_for_generation(
             subsection_title = row[0]
             title = f"{subsection_title}（{subsection_number}）"
 
-            prompt = f"""小节主题：{subsection_title}
+            # 构建提示词：如果有实际内容，使用内容；否则使用标题
+            if chapter_content:
+                prompt = f"""小节主题：{subsection_title}
+小节编号：{subsection_number}
+所属章节：第{chapter_number}章
+所属文档：{document_title}
+
+相关内容参考：
+{chapter_content}
+
+请基于上述内容，生成关于"{subsection_title}"的测试题目。题目应该聚焦于该小节的知识点，选项和解析都要基于给定的内容。"""
+            else:
+                prompt = f"""小节主题：{subsection_title}
 小节编号：{subsection_number}
 所属章节：第{chapter_number}章
 所属文档：{document_title}
@@ -308,7 +391,7 @@ async def _get_chapter_content_for_generation(
 请基于小节主题"{subsection_title}"生成相关的测试题目。
 AI 可以利用自身的知识库，围绕这个具体的小节主题出题，题目应该聚焦于该小节的知识点。"""
 
-            logger.info(f"小节 {chapter_number}.{subsection_number} ({subsection_title}) - AI 基于小节主题生成题目")
+            logger.info(f"小节 {chapter_number}.{subsection_number} ({subsection_title}) - AI 生成题目 (内容长度: {len(chapter_content)})")
             return title, prompt
 
     # 没有小节编号，获取章节级别的标题
@@ -322,13 +405,23 @@ AI 可以利用自身的知识库，围绕这个具体的小节主题出题，�
 
     chapter_title = progress.chapter_title if progress else f"第{chapter_number}章"
 
-    prompt = f"""章节主题：{chapter_title}
+    # 构建提示词：如果有实际内容，使用内容；否则使用标题
+    if chapter_content:
+        prompt = f"""章节主题：{chapter_title}
+所属文档：{document_title}
+
+相关内容参考：
+{chapter_content}
+
+请基于上述内容，生成关于"{chapter_title}"的测试题目。题目应该基于给定的文档内容，确保与教材内容相关。"""
+    else:
+        prompt = f"""章节主题：{chapter_title}
 所属文档：{document_title}
 
 请基于"{chapter_title}"这个主题，生成相关的测试题目。
-AI 可以利用自身的知识库，围绕这个主题出题，不需要查看具体教材内容。"""
+AI 可以利用自身的知识库，围绕这个主题出题。"""
 
-    logger.info(f"章节 {chapter_number} ({chapter_title}) - AI 基于章节主题生成题目")
+    logger.info(f"章节 {chapter_number} ({chapter_title}) - AI 生成题目 (内容长度: {len(chapter_content)})")
 
     return chapter_title, prompt
 
