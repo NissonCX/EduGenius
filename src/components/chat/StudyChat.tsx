@@ -88,6 +88,10 @@ export function StudyChat({
         return
       }
 
+      // 🔥 关键修复：开始加载前先清空旧消息
+      setMessages([])
+      setIsLoadingHistory(true)
+
       try {
         // 🔧 修复：添加 subsectionId 到查询参数
         // 只有当 subsectionId 存在且不为空字符串时才添加
@@ -120,7 +124,8 @@ export function StudyChat({
             console.log('转换后的消息:', historyMessages) // 调试日志
             setMessages(historyMessages)
           } else {
-            console.log('没有找到历史对话')
+            console.log('没有找到历史对话，清空消息列表')
+            setMessages([]) // 🔥 关键修复：没有历史对话时也要清空
           }
         } else {
           console.error('获取历史对话失败:', response.status)

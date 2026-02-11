@@ -733,6 +733,7 @@ function StudyPageContent() {
         {/* 主学习区域 - 全屏对话 */}
         <div className="flex-1 overflow-hidden min-h-0">
           <StudyChat
+            key={currentSubsection?.subsection_number || 'global'}
             chapterId={chapterId}
             chapterTitle={selectedChapter.chapter_title}
             subsectionId={currentSubsection?.subsection_number}
