@@ -66,7 +66,7 @@ The workflow graph (`api/app/agents/graphs/teaching_graph.py`) orchestrates thes
 
 - `documents.py` - Document upload and processing (PDF, Word, PowerPoint)
 - `teaching.py` - AI teaching sessions with SSE streaming
-- `users.py` - Authentication (JWT), registration, password reset
+- `users.py` - Authentication (JWT), registration, password reset, user history
 - `quiz.py` - Quiz CRUD and management
 - `quiz_ai.py` - AI-generated quiz questions
 - `mistakes.py` - Error collection and review
@@ -126,7 +126,7 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 - **OCR Semaphore**: Limits concurrent OCR operations to prevent resource exhaustion (`api/app/core/ocr_semaphore.py`).
 - **Type Safety**: Frontend uses strict TypeScript; backend uses Pydantic for validation.
 
-## Common Work
+## Common Tasks
 
 When modifying the teaching system:
 1. Agent logic is in `api/app/agents/nodes/`
@@ -140,8 +140,32 @@ When adding new API endpoints:
 3. Add TypeScript types in `src/types/`
 4. Use `fetchWithAuth` for authenticated requests
 
+## Project Status
+
+**Last Updated**: 2026-02-12
+
+**Completed Features**:
+- ✅ User authentication and authorization
+- ✅ Document upload and processing (PDF, Word, PPT)
+- ✅ Multi-agent AI teaching system
+- ✅ Adaptive difficulty levels (L1-L5)
+- ✅ Quiz generation and management
+- ✅ Mistake collection and review
+- ✅ Progress tracking and statistics
+- ✅ Conversation history by subsection
+- ✅ Study calendar and learning curve visualization
+- ✅ Knowledge graph integration
+
+**Known Limitations**:
+- OCR processing may timeout for large documents
+- Concurrent request limits apply
+- Mobile UI needs optimization
+
+## Progress Documentation
+
+See `PROGRESS.md` for detailed project progress tracking.
+
 ## Testing
 
 - Backend tests can be run from `api/` directory
 - Frontend tests are in `src/lib/__tests__/`
-- Use `api/run_upload_test.sh` to test document upload
