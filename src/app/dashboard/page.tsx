@@ -72,14 +72,22 @@ export default function DashboardPage() {
         setUserStats(stats)
         setMistakeStats(mistakes)
         setRecentActivities(activities)
-        setStudyDays(calendarData)
-        setStudyCurveData(curveData)
 
-        // 🔍 调试日志
-        console.log('📊 学习日历数据:', calendarData)
-        console.log('📈 学习曲线数据:', curveData)
-        console.log('📅 学习日历条目数:', calendarData?.length || 0)
-        console.log('📉 学习曲线条目数:', curveData?.length || 0)
+        // 🔍 调试日志 - 详细追踪学习数据
+        console.log('='.repeat(50))
+        console.log('📊 Dashboard 数据加载完成')
+        console.log('📅 学习日历数组类型:', typeof calendarData)
+        console.log('📅 学习日历是否为数组:', Array.isArray(calendarData))
+        console.log('📅 学习日历数组长度:', calendarData?.length || 0)
+        console.log('📈 学习曲线数组类型:', typeof curveData)
+        console.log('📈 学习曲线是否为数组:', Array.isArray(curveData))
+        console.log('📈 学习曲线数组长度:', curveData?.length || 0)
+        console.log('='.repeat(50))
+
+        // 🔧 修复：fetchStudyCalendar 和 fetchStudyCurve 已经返回数组了
+        // 不需要再访问 .study_days 或 .data_points
+        setStudyDays(calendarData || [])
+        setStudyCurveData(curveData || [])
       } catch (error) {
         console.error('Error loading dashboard data:', error)
       } finally {
