@@ -657,15 +657,6 @@ export default function DashboardPage() {
             </motion.div>
           </div>
         </section>
-              <KnowledgeConstellation
-                nodes={knowledgeGraph?.nodes}
-                links={knowledgeGraph?.links}
-                onNodeClick={handleNodeClick}
-                height={300}
-              />
-            </motion.div>
-          </div>
-        </section>
       )}
 
       {/* Progress Tracking */}

@@ -9,6 +9,7 @@
  */
 
 import { getApiUrl } from './config'
+import { dispatchAuthLogout } from './auth-events'
 
 interface RefreshTokenResponse {
   access_token: string
@@ -142,13 +143,20 @@ export async function fetchWithAuth(
     } catch (error) {
       // 刷新失败，清除 tokens 并跳转到登录页
       processQueue(error, null)
+
+      // 触发登出事件（通知所有组件更新UI并显示提示）
+      dispatchAuthLogout('token_refresh_failed')
+
+      // 清除 tokens
       localStorage.removeItem('token')
       localStorage.removeItem('refresh_token')
       localStorage.removeItem('user')
 
-      // 跳转到登录页
+      // 延迟跳转，让组件有时间显示提示
       if (typeof window !== 'undefined') {
-        window.location.href = '/login'
+        setTimeout(() => {
+          window.location.href = '/login'
+        }, 100)
       }
 
       throw error

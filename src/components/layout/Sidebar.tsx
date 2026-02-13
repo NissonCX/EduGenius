@@ -13,6 +13,8 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { getApiUrl, getAuthHeadersSimple } from '@/lib/config'
+import { onAuthLogout, getLogoutReasonMessage } from '@/lib/auth-events'
+import { useToast } from '@/components/Toast'
 
 interface User {
   id: number
@@ -32,6 +34,7 @@ export function Sidebar({ className }: SidebarProps) {
   const [user, setUser] = useState<User | null>(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const { showError } = useToast()
 
   // 客户端挂载后从 localStorage 读取用户信息
   useEffect(() => {
@@ -65,10 +68,19 @@ export function Sidebar({ className }: SidebarProps) {
 
     window.addEventListener('storage', handleStorageChange)
 
+    // 监听认证登出事件（同页面内的认证状态变化）
+    const unsubscribe = onAuthLogout((detail) => {
+      // 更新用户状态
+      loadUser()
+      // 显示提示
+      showError(getLogoutReasonMessage(detail.reason))
+    })
+
     return () => {
       window.removeEventListener('storage', handleStorageChange)
+      unsubscribe?.()
     }
-  }, [])
+  }, [showError])
 
   // 加载用户总体进度
   useEffect(() => {
