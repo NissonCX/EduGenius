@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 @import "tailwindcss";
+@import "./tokens.css";
 
 /* Base Styles */
 @layer base {
@@ -63,6 +64,152 @@
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
     }
+  }
+
+  /* 骨架屏呼吸动画 */
+  @keyframes skeleton-breathe {
+    0%, 100% {
+      opacity: 0.5;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  .skeleton-animate {
+    animation: skeleton-breathe 1.5s ease-in-out infinite;
+  }
+
+  /* 闪烁效果 */
+  @keyframes skeleton-shimmer {
+    0% {
+      background-position: -1000px 0;
+    }
+    100% {
+      background-position: 1000px 0;
+    }
+  }
+
+  .skeleton-shimmer {
+    background: linear-gradient(
+      90deg,
+      #F3F4F6 0%,
+      #E5E7EB 20%,
+      #F3F4F6 40%,
+      #F3F4F6 100%
+    );
+    background-size: 1000px 100%;
+    animation: skeleton-shimmer 2s infinite linear;
+  }
+
+  /* ========================================
+   * 微交互动效类 (Micro-interactions)
+   * ======================================== */
+
+  /* 按钮悬停 */
+  .btn-hover {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .btn-hover:hover {
+    transform: scale(1.05);
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+  }
+
+  .btn-hover:active {
+    transform: scale(0.95);
+  }
+
+  /* 卡片悬停 */
+  .card-hover {
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .card-hover:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  }
+
+  /* 输入框焦点 */
+  .input-focus {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .input-focus:focus {
+    border-color: var(--color-primary, #000000);
+    box-shadow: 0 0 0 2px rgb(0 0 0 / 0.1);
+  }
+
+  /* 列表项悬停 */
+  .list-item-hover {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .list-item-hover:hover {
+    background-color: #F9FAFB;
+    transform: translateX(4px);
+  }
+
+  /* Toast 动画 */
+  @keyframes toast-in {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes toast-out {
+    from {
+      transform: translateX(0);
+      opacity: 1;
+    }
+    to {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+  }
+
+  .toast-enter {
+    animation: toast-in 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .toast-exit {
+    animation: toast-out 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* 模态框动画 */
+  @keyframes modal-in {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes modal-out {
+    from {
+      opacity: 1;
+      transform: scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+  }
+
+  .modal-enter {
+    animation: modal-in 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .modal-exit {
+    animation: modal-out 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   }
 }
 

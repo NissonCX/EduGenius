@@ -1,0 +1,178 @@
+/**
+ * EduGenius Design Tokens
+ * 统一的设计变量系统
+ * 遵循黑白灰极简设计风格
+ */
+
+:root {
+  /* ========================================
+   * 颜色系统 (Color System)
+   * ======================================== */
+
+  /* 主色调 */
+  --color-primary: #000000;        /* 黑色 - 主要文字和操作 */
+  --color-secondary: #6B7280;      /* 灰色 - 次要文字 */
+  --color-tertiary: #9CA3AF;       /* 浅灰 - 辅助信息 */
+
+  /* 功能色 */
+  --color-accent: #2563EB;         /* 蓝色 - 强调和链接 */
+  --color-success: #10B981;         /* 绿色 - 成功状态 */
+  --color-warning: #F59E0B;        /* 橙色 - 警告状态 */
+  --color-error: #EF4444;           /* 红色 - 错误状态 */
+  --color-info: #3B82F6;           /* 信息蓝 */
+
+  /* 中性色 (灰度系统) */
+  --color-gray-50: #F9FAFB;
+  --color-gray-100: #F3F4F6;
+  --color-gray-200: #E5E7EB;
+  --color-gray-300: #D1D5DB;
+  --color-gray-400: #9CA3AF;
+  --color-gray-500: #6B7280;
+  --color-gray-600: #4B5563;
+  --color-gray-700: #374151;
+  --color-gray-800: #1F2937;
+  --color-gray-900: #111827;
+
+  /* 背景色 */
+  --color-bg-primary: #FFFFFF;       /* 主背景 */
+  --color-bg-secondary: #F9FAFB;     /* 次要背景 */
+  --color-bg-tertiary: #F3F4F6;     /* 三级背景 */
+
+  /* ========================================
+   * 间距系统 (Spacing System)
+   * ======================================== */
+
+  --spacing-xs: 0.25rem;   /* 4px */
+  --spacing-sm: 0.5rem;     /* 8px */
+  --spacing-md: 1rem;       /* 16px */
+  --spacing-lg: 1.5rem;     /* 24px */
+  --spacing-xl: 2rem;       /* 32px */
+  --spacing-2xl: 3rem;      /* 48px */
+  --spacing-3xl: 4rem;      /* 64px */
+  --spacing-4xl: 6rem;      /* 96px */
+
+  /* ========================================
+   * 圆角系统 (Border Radius)
+   * ======================================== */
+
+  --radius-xs: 0.25rem;     /* 4px */
+  --radius-sm: 0.375rem;    /* 6px */
+  --radius-md: 0.5rem;      /* 8px */
+  --radius-lg: 0.75rem;     /* 12px */
+  --radius-xl: 1rem;        /* 16px */
+  --radius-2xl: 1.5rem;     /* 24px */
+  --radius-full: 9999px;     /* 完全圆形 */
+
+  /* ========================================
+   * 阴影系统 (Shadow System)
+   * ======================================== */
+
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+
+  /* 内阴影 */
+  --shadow-inner: inset 0 2px 4px 0 rgb(0 0 0 / 0.05);
+
+  /* ========================================
+   * 动画系统 (Animation System)
+   * ======================================== */
+
+  /* 动画时长 */
+  --duration-fast: 150ms;      /* 快速交互 */
+  --duration-base: 200ms;      /* 标准交互 */
+  --duration-slow: 300ms;      /* 复杂动画 */
+  --duration-slower: 500ms;    /* 页面过渡 */
+
+  /* 缓动函数 */
+  --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.6, 1);
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  --ease-circ-out: cubic-bezier(0.075, 0.82, 0.165, 1);
+
+  /* ========================================
+   * 字体系统 (Typography System)
+   * ======================================== */
+
+  /* 字体家族 */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+
+  /* 字体大小 */
+  --text-xs: 0.75rem;        /* 12px */
+  --text-sm: 0.875rem;       /* 14px */
+  --text-base: 1rem;          /* 16px */
+  --text-lg: 1.125rem;       /* 18px */
+  --text-xl: 1.25rem;        /* 20px */
+  --text-2xl: 1.5rem;        /* 24px */
+  --text-3xl: 1.875rem;      /* 30px */
+  --text-4xl: 2.25rem;       /* 36px */
+  --text-5xl: 3rem;          /* 48px */
+
+  /* 字重 */
+  --font-light: 300;
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+
+  /* 行高 */
+  --leading-tight: 1.25;
+  --leading-snug: 1.375;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.625;
+  --leading-loose: 2;
+
+  /* ========================================
+   * Z-index 层级 (Z-Index Scale)
+   * ======================================== */
+
+  --z-dropdown: 1000;
+  --z-sticky: 1020;
+  --z-fixed: 1030;
+  --z-modal-backdrop: 1040;
+  --z-modal: 1050;
+  --z-popover: 1060;
+  --z-tooltip: 1070;
+
+  /* ========================================
+   * 断点系统 (Breakpoint System)
+   * ======================================== */
+
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+}
+
+/* ========================================
+ * 减少动画偏好支持 (Reduced Motion)
+ * ======================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ========================================
+ * 高对比度模式支持 (High Contrast)
+ * ======================================== */
+
+@media (prefers-contrast: high) {
+  :root {
+    --color-primary: #000000;
+    --color-secondary: #000000;
+    --color-border: #000000;
+  }
+}

@@ -68,9 +68,19 @@ function fixIncompleteMarkdown(content: string): string {
 interface StreamingMessageProps {
   content: string
   isComplete?: boolean
+  isStreaming?: boolean
+  streamProgress?: {
+    received: number
+    estimatedTotal: number
+  }
 }
 
-export function StreamingMessage({ content, isComplete = false }: StreamingMessageProps) {
+export function StreamingMessage({
+  content,
+  isComplete = false,
+  isStreaming = false,
+  streamProgress
+}: StreamingMessageProps) {
   const renderContent = isComplete ? content : fixIncompleteMarkdown(content)
 
   return (
@@ -89,11 +99,34 @@ export function StreamingMessage({ content, isComplete = false }: StreamingMessa
 
           {/* 消息内容 */}
           <div className="flex-1 space-y-2">
-            {/* 名称标签 */}
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-gray-900">AI 导师</span>
-              <span className="text-xs text-gray-400">正在输入...</span>
+            {/* 名称标签和状态 */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-900">AI 导师</span>
+                {!isComplete && (
+                  <span className="text-xs text-gray-400">正在输入...</span>
+                )}
+              </div>
+
+              {/* 流式状态指示器 */}
+              {isStreaming && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="flex items-center gap-2 text-xs text-gray-500"
+                >
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                  <span>正在生成回复...</span>
+                </motion.div>
+              )}
             </div>
+
+            {/* 字符计数 */}
+            {streamProgress && isStreaming && (
+              <div className="text-xs text-gray-400">
+                {streamProgress.received} / {streamProgress.estimatedTotal} 字符
+              </div>
+            )}
 
             {/* 内容 */}
             <div className="max-w-4xl">

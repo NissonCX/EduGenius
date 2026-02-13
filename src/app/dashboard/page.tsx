@@ -1,13 +1,58 @@
-'use client'
+'use client';
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { motion } from 'framer-motion'
-import { CompetencyRadar } from '@/components/charts/CompetencyRadar'
-import { KnowledgeConstellation } from '@/components/charts/KnowledgeConstellation'
-import { StudyCalendar, StudyCurve } from '@/components/progress'
-import { useAuth } from '@/contexts/AuthContext'
-import { getApiUrl } from '@/lib/config'
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { motion } from 'framer-motion';
+import { BookOpen, TrendingUp, FileText, AlertCircle, Clock } from 'lucide-react';
+import { CompetencyRadar } from '@/components/charts/CompetencyRadar';
+import { KnowledgeConstellation } from '@/components/charts/KnowledgeConstellation';
+import { StudyCalendar, StudyCurve } from '@/components/progress';
+import { useAuth } from '@/contexts/AuthContext';
+import { getApiUrl } from '@/lib/config';
+import { StatCard } from '@/components/dashboard/StatCard';
+import { ChartCard } from '@/components/dashboard/ChartCard';
+
+// RecentActivities 组件
+interface RecentActivitiesProps {
+  userId?: number;
+}
+
+function RecentActivities({ userId }: RecentActivitiesProps) {
+  const [activities, setActivities] = useState<any[]>([]);
+
+  useEffect(() => {
+    // 这里可以加载实际的活动数据
+    setActivities([
+      { type: 'quiz', title: '完成测试', time: '2小时前' },
+      { type: 'study', title: '学习第3章', time: '昨天' },
+      { type: 'upload', title: '上传新文档', time: '2天前' }
+    ]);
+  }, [userId]);
+
+  return (
+    <div className="space-y-3">
+      {activities.length === 0 ? (
+        <div className="text-center py-8 text-gray-500 text-sm">
+          暂无最近活动
+        </div>
+      ) : (
+        <ul className="space-y-3">
+          {activities.map((activity, index) => (
+            <li key={index} className="flex items-start gap-3 p-3 hover:bg-gray-50 rounded-lg transition-colors">
+              <div className="p-2 bg-gray-100 rounded-lg flex-shrink-0">
+                <Clock className="w-4 h-4 text-gray-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900">{activity.title}</p>
+                <p className="text-xs text-gray-500">{activity.time}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -447,26 +492,171 @@ export default function DashboardPage() {
         </section>
       ) : (
         <section className="container-x py-4 sm:py-6 lg:py-8">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-            {/* Competency Radar */}
+          {/* Bento Grid 布局 */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 auto-rows-min">
+            {/* 统计卡片 - 4个小卡片，每个 1x1 */}
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.3 }}
-              className="p-4 sm:p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-200"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2, delay: 0 }}
+              className="col-span-1"
             >
-              <CompetencyRadar
-                data={competencyData}
+              <StatCard
+                title="完成章节"
+                value={stats?.completed_chapters || 0}
+                unit="个"
+                icon={<BookOpen className="w-5 h-5 text-gray-700" />}
+                trend={{
+                  value: 15,
+                  direction: 'up'
+                }}
               />
             </motion.div>
 
-            {/* Knowledge Constellation */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2, delay: 0.05 }}
+              className="col-span-1"
+            >
+              <StatCard
+                title="学习进度"
+                value={stats?.overall_progress || 0}
+                unit="%"
+                icon={<TrendingUp className="w-5 h-5 text-gray-700" />}
+                trend={{
+                  value: 8,
+                  direction: 'up'
+                }}
+              />
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2, delay: 0.1 }}
+              className="col-span-1"
+            >
+              <StatCard
+                title="已学文档"
+                value={availableDocuments.length}
+                unit="个"
+                icon={<FileText className="w-5 h-5 text-gray-700" />}
+              />
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2, delay: 0.15 }}
+              className="col-span-1"
+            >
+              <StatCard
+                title="错题数量"
+                value={mistakesCount || 0}
+                unit="道"
+                icon={<AlertCircle className="w-5 h-5 text-gray-700" />}
+                trend={{
+                  value: 5,
+                  direction: 'down'
+                }}
+                description="需要重点关注"
+              />
+            </motion.div>
+
+            {/* 雷达图 - 2x2 */}
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.3, delay: 0.1 }}
-              className="p-4 sm:p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-200"
+              transition={{ duration: 0.2, delay: 0.2 }}
+              className="col-span-1 row-span-2 lg:col-span-1"
             >
+              <ChartCard
+                title="能力雷达图"
+                description="当前维度评估"
+                className="h-full"
+              >
+                <CompetencyRadar data={competencyData} />
+              </ChartCard>
+            </motion.div>
+
+            {/* 星座图 - 1x1 */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.2, delay: 0.25 }}
+              className="col-span-1"
+            >
+              <ChartCard
+                title="知识图谱"
+                description="概念关联网络"
+                showRefresh
+                onRefresh={loadCompetencyData}
+                isRefreshing={isCompetencyLoading}
+              >
+                <KnowledgeConstellation
+                  documentId={selectedDocumentId}
+                />
+              </ChartCard>
+            </motion.div>
+
+            {/* 学习曲线 - 1x2 竖向 */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.2, delay: 0.3 }}
+              className="col-span-1 row-span-2 lg:col-span-1"
+            >
+              <ChartCard
+                title="学习曲线"
+                description="学习效果趋势"
+                className="h-full"
+              >
+                <StudyCurve
+                  documentId={selectedDocumentId}
+                />
+              </ChartCard>
+            </motion.div>
+
+            {/* 学习日历 - 横跨3列 */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.2, delay: 0.35 }}
+              className="col-span-1 lg:col-span-3"
+            >
+              <ChartCard
+                title="学习日历"
+                description="最近30天的学习活动"
+                showRefresh
+                onRefresh={() => {
+                  if (selectedDocumentId) {
+                    loadCalendarData(selectedDocumentId);
+                  }
+                }}
+              >
+                <StudyCalendar
+                  documentId={selectedDocumentId}
+                />
+              </ChartCard>
+            </motion.div>
+
+            {/* 最近活动 - 底部长卡片 */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.2, delay: 0.4 }}
+              className="col-span-1 lg:col-span-4"
+            >
+              <ChartCard
+                title="最近活动"
+                description="最近的学习记录和测试"
+              >
+                <RecentActivities userId={user?.id} />
+              </ChartCard>
+            </motion.div>
+          </div>
+        </section>
               <KnowledgeConstellation
                 nodes={knowledgeGraph?.nodes}
                 links={knowledgeGraph?.links}

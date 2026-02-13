@@ -1,13 +1,14 @@
-import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
-import '@/styles/globals.css'
-import 'katex/dist/katex.min.css'
-import { Sidebar } from '@/components/layout/Sidebar'
-import { MobileNav } from '@/components/layout/MobileNav'
-import { ErrorBoundary } from '@/components/ErrorBoundary'
-import { ToastProvider } from '@/components/Toast'
-import { AuthProvider } from '@/contexts/AuthContext'
-import PWAInstaller from '@/components/PWAInstaller'
+import type { Metadata, Viewport } from 'next';
+import { Inter } from 'next/font/google';
+import '@/styles/globals.css';
+import 'katex/dist/katex.min.css';
+import { Sidebar } from '@/components/layout/Sidebar';
+import { MobileNav } from '@/components/layout/MobileNav';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { ToastProvider } from '@/components/Toast';
+import { AuthProvider } from '@/contexts/AuthContext';
+import PWAInstaller from '@/components/PWAInstaller';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -63,7 +64,19 @@ export default function RootLayout({
 
               {/* 主内容区域 - 桌面端添加左边距，移动端添加底部内边距 */}
               <main className="min-h-screen lg:pl-80 pb-16 lg:pb-0">
-                {children}
+                <AnimatePresence mode="wait">
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    transition={{
+                      duration: 0.2,
+                      ease: [0.4, 0, 0.2, 1]
+                    }}
+                  >
+                    {children}
+                  </motion.div>
+                </AnimatePresence>
               </main>
 
               {/* 移动端底部导航 - 仅在移动端显示 */}

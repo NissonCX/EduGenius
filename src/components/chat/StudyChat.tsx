@@ -7,13 +7,65 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Loader2 } from 'lucide-react'
+import { Send, Loader2, User } from 'lucide-react'
 import { Message } from '@/types/chat'
 import { ChatMessage } from './ChatMessage'
 import { StreamingMessage } from './StreamingMessage'
 import { TypingIndicator } from './TypingIndicator'
 import { safeFetch, handleApiError, getFriendlyErrorMessage } from '@/lib/errors'
 import { getApiUrl, getAuthHeadersSimple } from '@/lib/config'
+
+// 消息骨架屏组件
+interface MessageSkeletonProps {
+  isUser?: boolean
+}
+
+function MessageSkeleton({ isUser = false }: MessageSkeletonProps) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={`flex gap-3 mb-4 ${isUser ? 'flex-row-reverse' : ''}`}
+    >
+      {/* 头像 */}
+      <div
+        className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+          isUser ? 'bg-black' : 'bg-gray-100'
+        }`}
+      >
+        {isUser ? (
+          <User className="w-5 h-5 text-white" />
+        ) : (
+          <div className="w-5 h-5 bg-gray-400 rounded-full animate-pulse" />
+        )}
+      </div>
+
+      {/* 消息内容骨架 */}
+      <div
+        className={`flex-1 max-w-[70%] space-y-2 ${
+          isUser ? 'items-end flex flex-col' : ''
+        }`}
+      >
+        {/* 文本行 */}
+        <div
+          className={`h-4 rounded animate-pulse ${
+            isUser ? 'bg-gray-300 w-32' : 'bg-gray-200 w-full'
+          }`}
+        />
+        <div
+          className={`h-4 rounded animate-pulse ${
+            isUser ? 'bg-gray-300 w-48' : 'bg-gray-200 w-5/6'
+          }`}
+        />
+        <div
+          className={`h-4 rounded animate-pulse ${
+            isUser ? 'bg-gray-300 w-24' : 'bg-gray-200 w-4/6'
+          }`}
+        />
+      </div>
+    </motion.div>
+  )
+}
 
 interface Subsection {
   subsection_number: string
@@ -376,10 +428,13 @@ export function StudyChat({
       {/* 消息列表 */}
       <div className="flex-1 overflow-y-auto">
         {isLoadingHistory ? (
-          <div className="flex items-center justify-center h-full min-h-[400px]">
-            <div className="flex flex-col items-center gap-4">
-              <div className="animate-spin rounded-full h-10 w-10 border-3 border-gray-300 border-t-black"></div>
-              <p className="text-sm text-gray-600 font-medium">加载学习历史中...</p>
+          <div className="p-4 space-y-4">
+            {/* 显示3条消息骨架屏 */}
+            <MessageSkeleton isUser={false} />
+            <MessageSkeleton isUser={true} />
+            <MessageSkeleton isUser={false} />
+            <div className="text-center text-sm text-gray-500 py-4">
+              正在加载学习历史...
             </div>
           </div>
         ) : messages.length === 0 ? (

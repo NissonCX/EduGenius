@@ -12,7 +12,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Upload, FileText, CheckCircle2, Loader2, AlertCircle, Eye, Sparkles } from 'lucide-react'
+import { Upload, FileText, CheckCircle2, Loader2, AlertCircle, Eye, Sparkles, UploadCloud, FileSearch, Cog, Scan, Database } from 'lucide-react'
 import { getApiUrl, fetchWithTimeout } from '@/lib/config'
 import { useAuth } from '@/contexts/AuthContext'
 
@@ -52,6 +52,58 @@ function useSmoothProgress(targetProgress: number, duration: number = 600) {
   }, [targetProgress, duration])
 
   return smoothProgress
+}
+
+// 阶段配置映射
+const stageConfigMap: Record<
+  ProcessingStage,
+  {
+    icon: React.ReactNode
+    title: string
+    detail: string
+    progress?: number
+  }
+> = {
+  idle: {
+    icon: <Upload className="w-6 h-6" />,
+    title: '准备上传',
+    detail: '选择要上传的文档'
+  },
+  uploading: {
+    icon: <UploadCloud className="w-6 h-6" />,
+    title: '上传文档中...',
+    detail: '正在将文件上传到服务器'
+  },
+  detecting: {
+    icon: <FileSearch className="w-6 h-6" />,
+    title: '检测文档类型...',
+    detail: '自动识别 PDF 格式和文本层'
+  },
+  processing: {
+    icon: <Cog className="w-6 h-6" />,
+    title: '快速处理中...',
+    detail: '提取文本内容，分析章节结构'
+  },
+  ocr_processing: {
+    icon: <Scan className="w-6 h-6" />,
+    title: 'OCR 文字识别中...',
+    detail: '扫描识别页面内容'
+  },
+  vectorizing: {
+    icon: <Database className="w-6 h-6" />,
+    title: '向量化存储...',
+    detail: '构建知识图谱索引'
+  },
+  completed: {
+    icon: <CheckCircle2 className="w-6 h-6" />,
+    title: '处理完成！',
+    detail: '文档已准备好，可以开始学习'
+  },
+  failed: {
+    icon: <AlertCircle className="w-6 h-6" />,
+    title: '处理失败',
+    detail: '请检查文件后重新上传'
+  }
 }
 
 // 处理阶段
@@ -443,14 +495,58 @@ export function SmartUpload({ onUploadComplete, onError }: SmartUploadProps) {
               )}
             </div>
 
-            {/* 阶段指示器 */}
+            {/* 阶段指示器 - 增强版 */}
             <div className="space-y-3">
+              {/* 当前阶段详情 */}
+              {stage !== 'idle' && stage !== 'completed' && stage !== 'failed' && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="p-5 bg-gray-50 rounded-2xl border border-gray-100 mb-4"
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="p-3 bg-white rounded-xl shadow-sm border border-gray-100">
+                      {stageConfigMap[stage].icon}
+                    </div>
+
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-gray-900">
+                        {stageConfigMap[stage].title}
+                      </h3>
+                      <p className="text-sm text-gray-500 mt-1">
+                        {stage === 'ocr_processing' && status?.current_page && status?.total_pages
+                          ? `正在扫描第 ${status.current_page} / ${status.total_pages} 页`
+                          : status?.stage_message || stageConfigMap[stage].detail}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 阶段进度条 */}
+                  <motion.div
+                    className="mt-4 h-2 bg-gray-200 rounded-full overflow-hidden"
+                    initial={{ width: 0 }}
+                    animate={{ width: '100%' }}
+                    transition={{ duration: 0.3 }}
+                  >
+                    <motion.div
+                      className="h-full bg-black rounded-full"
+                      animate={{ x: ['-100%', '0%'] }}
+                      transition={{
+                        repeat: Infinity,
+                        duration: 1.5,
+                        ease: 'linear'
+                      }}
+                    />
+                  </motion.div>
+                </motion.div>
+              )}
+
               {/* 检测阶段 */}
               <ProcessingStep
-                icon={<Sparkles className="w-5 h-5" />}
+                icon={<FileSearch className="w-5 h-5" />}
                 label="检测PDF类型"
                 active={stage === 'detecting'}
-                completed={stage !== 'detecting' && stage !== 'uploading'}
+                completed={stage !== 'detecting' && stage !== 'uploading' && stage !== 'idle'}
               />
 
               {/* 处理阶段（根据路径显示） */}
