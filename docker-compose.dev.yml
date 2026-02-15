@@ -1,0 +1,87 @@
+version: '3.8'
+
+# 开发环境 Docker Compose 配置
+# 使用方式: docker-compose -f docker-compose.dev.yml up
+
+services:
+  # ==================== Redis 缓存服务 ====================
+  redis:
+    image: redis:7-alpine
+    container_name: edugenius-redis-dev
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - edugenius-dev-network
+
+  # ==================== 后端 API 服务（开发模式）====================
+  backend:
+    build:
+      context: ./api
+      dockerfile: Dockerfile.dev
+    container_name: edugenius-backend-dev
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # 数据库配置
+      - DATABASE_URL=sqlite+aiosqlite:///./edugenius.db
+
+      # Redis 配置
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_ENABLED=true
+
+      # ChromaDB 配置
+      - CHROMA_PERSIST_DIR=/app/chroma_db
+
+      # API 密钥（从环境变量传入）
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+
+      # JWT 密钥（从环境变量传入）
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+
+      # 应用配置
+      - DEBUG=True
+      - DEFAULT_MODEL=qwen-max
+      - FALLBACK_MODEL=qwen-plus
+
+      # CORS 配置（开发环境允许所有源）
+      - ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+
+      # 日志配置
+      - LOG_LEVEL=DEBUG
+    volumes:
+      # 挂载源代码，实现热重载
+      - ./api:/app
+      - backend_dev_data:/app/data
+      - chroma_dev_db:/app/chroma_db
+      - uploads_dev:/app/uploads
+      - logs_dev:/app/logs
+    depends_on:
+      - redis
+    networks:
+      - edugenius-dev-network
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+# ==================== 数据卷 ====================
+volumes:
+  redis_dev_data:
+    driver: local
+  backend_dev_data:
+    driver: local
+  chroma_dev_db:
+    driver: local
+  uploads_dev:
+    driver: local
+  logs_dev:
+    driver: local
+
+# ==================== 网络 ====================
+networks:
+  edugenius-dev-network:
+    driver: bridge

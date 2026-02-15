@@ -103,27 +103,76 @@ PaddleOCR           # PDF 文字识别
 
 ### ⚠️ 前置要求
 
+**本地安装：**
 - Node.js >= 18.0
 - Python >= 3.10
 - 通义千问 API Key（必需）
 
-### 方式 1: 一键启动（推荐）
+**Docker 部署：**
+- Docker >= 20.10
+- Docker Compose >= 2.0
+- 通义千问 API Key（必需）
+
+### 方式 1: Docker 部署（推荐）
+
+**最简单的部署方式，无需安装 Node.js 和 Python**
+
+```bash
+# 1. 克隆项目
+git clone https://github.com/NissonCX/EduGenius.git
+cd EduGenius
+
+# 2. 配置环境变量
+cp .env.example .env
+nano .env  # 填入 DASHSCOPE_API_KEY 和 JWT_SECRET_KEY
+
+# 3. 启动所有服务（后端、前端、Redis）
+docker compose up -d
+
+# 4. 初始化数据库
+docker compose exec backend python init_db.py
+docker compose exec backend bash -c "cd migrations && python add_refresh_token.py && python add_subsection_to_questions.py"
+
+# 5. 访问应用
+# 前端: http://localhost:3000
+# 后端: http://localhost:8000
+# API 文档: http://localhost:8000/docs
+```
+
+**详细的 Docker 部署说明请查看 [DOCKER_DEPLOYMENT.md](DOCKER_DEPLOYMENT.md)**
+
+### 方式 2: 本地安装（一键启动）
+
+**⚠️ 注意**: 首次使用需要先配置环境变量，请参考 [环境变量配置](#-环境变量配置) 章节。
 
 ```bash
 git clone https://github.com/NissonCX/EduGenius.git
 cd EduGenius
+
+# 1. 配置后端环境变量（必须）
+cp api/.env.example api/.env
+nano api/.env  # 填入 DASHSCOPE_API_KEY 和 JWT_SECRET_KEY
+
+# 2. 配置前端环境变量（可选，使用默认值即可）
+cp .env.local.example .env.local
+
+# 3. 一键启动
 ./start-dev.sh
 ```
 
-这将自动完成：
-- ✅ 检查系统环境
-- ✅ 安装前后端依赖
-- ✅ 配置环境变量
-- ✅ 初始化数据库
-- ✅ 执行数据库迁移
+启动脚本会自动完成：
+- ✅ 检查系统环境（Node.js, Python 版本）
+- ✅ 检查并安装前后端依赖（如缺失）
+- ✅ 创建 Python 虚拟环境（如不存在）
+- ✅ 检查环境变量配置
+- ✅ 检查并初始化数据库（如不存在）
 - ✅ 启动前后端服务
 
-### 方式 2: 手动启动
+**首次安装请务必先配置环境变量！**
+
+### 方式 3: 本地手动安装
+
+**适合需要完全控制安装过程的用户**
 
 **详细步骤请查看 [启动指南](SETUP_GUIDE.md)**
 
@@ -141,9 +190,9 @@ python3 -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
-# 4. 配置环境变量
+# 4. 配置环境变量（必须！）
 cp .env.example .env
-# 编辑 .env 文件，填入你的 DASHSCOPE_API_KEY（必需）
+nano .env  # 编辑 .env 文件，填入 DASHSCOPE_API_KEY（必需）
 
 # 5. 初始化数据库
 python3 init_db.py
@@ -161,17 +210,31 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 **新开终端启动前端:**
 ```bash
 cd EduGenius
+cp .env.local.example .env.local  # 配置前端环境变量
 npm run dev
 ```
 
+**详细的迁移说明请参考 [迁移指南](MIGRATION_GUIDE.md)**
+
+### 部署方式对比
+
+| 方式 | 优点 | 缺点 | 适用场景 |
+|------|------|------|---------|
+| **Docker 部署** | • 环境隔离<br>• 一键启动<br>• 易于部署 | • 需要 Docker<br>• 占用资源稍多 | 生产环境、快速演示 |
+| **本地安装** | • 灵活调试<br>• 资源占用少<br>• 热重载快 | • 环境配置复杂<br>• 依赖管理麻烦 | 开发环境、深度定制 |
+
 ### 访问应用
 
-- 🌐 前端: http://localhost:3000
-- 🔧 后端 API: http://localhost:8000
-- 📚 API 文档: http://localhost:8000/docs
-- ❤️ 健康检查: http://localhost:8000/health
+服务启动成功后，访问：
+
+- 🌐 **前端**: http://localhost:3000
+- 🔧 **后端 API**: http://localhost:8000
+- 📚 **API 文档**: http://localhost:8000/docs
+- ❤️ **健康检查**: http://localhost:8000/health
 
 ### 数据库迁移（重要！）
+
+**首次安装必须执行数据库迁移！**
 
 如果遇到数据库相关错误，请查看 [迁移指南](MIGRATION_GUIDE.md) 或执行：
 
@@ -180,11 +243,14 @@ cd api/migrations
 python3 add_refresh_token.py           # 修复登录问题
 python3 add_subsection_to_questions.py # 修复历史对话问题
 ```
-```
 
-前端将运行在 http://localhost:3000
+**为什么需要迁移？**
 
-### 4. 开始使用
+数据库迁移用于添加新字段和修复数据结构：
+- `add_refresh_token.py` - 添加刷新令牌功能，修复登录问题
+- `add_subsection_to_questions.py` - 添加小节支持，修复历史对话问题
+
+### 开始使用
 
 1. 访问 http://localhost:3000/register 注册账户
 2. 选择教学风格偏好
