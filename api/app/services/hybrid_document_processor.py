@@ -346,8 +346,13 @@ class HybridDocumentProcessor:
                                     )
                                 )
                             )
-                        except RuntimeError:
-                            pass
+                        except RuntimeError as e:
+                            # 在某些情况下（如事件循环已关闭）可能抛出 RuntimeError
+                            # 记录日志但不中断处理
+                            logger.debug(
+                                f"无法更新文档进度（可能事件循环已关闭）: "
+                                f"document_id={document_id}, page={current}, error={e}"
+                            )
 
                 # 🔧 FIX: 使用 asyncio.to_thread 将同步 OCR 移到线程池
                 # 这样其他 API 请求不会被阻塞

@@ -36,6 +36,10 @@ router = APIRouter(prefix="/api/quiz", tags=["quiz"])
 # 内存中存储测试 session（生产环境应使用 Redis）
 quiz_sessions: dict = {}
 
+# Session TTL 配置（秒）
+SESSION_TTL_SECONDS = 3600  # 1小时后过期
+MAX_SESSIONS = 1000  # 最大 session 数量，防止内存泄漏
+
 
 class QuizSession:
     """测试会话数据结构"""
@@ -59,6 +63,64 @@ class QuizSession:
         self.current_question_index = 0
         self.started_at = datetime.now()
         self.completed_at = None
+
+    def is_expired(self) -> bool:
+        """检查 session 是否已过期"""
+        if self.completed_at:
+            # 已完成的 session，30分钟后过期
+            expiry_time = self.completed_at.timestamp() + 1800
+        else:
+            # 未完成的 session，按 TTL 过期
+            expiry_time = self.started_at.timestamp() + SESSION_TTL_SECONDS
+        return datetime.now().timestamp() > expiry_time
+
+
+def cleanup_expired_sessions() -> int:
+    """
+    清理过期的 session
+
+    Returns:
+        int: 清理的 session 数量
+    """
+    global quiz_sessions
+
+    expired_keys = [
+        session_id for session_id, session in quiz_sessions.items()
+        if session.is_expired()
+    ]
+
+    for key in expired_keys:
+        del quiz_sessions[key]
+
+    if expired_keys:
+        logger.info(f"🧹 清理了 {len(expired_keys)} 个过期的 quiz session")
+
+    return len(expired_keys)
+
+
+def prune_sessions_if_needed() -> None:
+    """
+    如果 session 数量超过限制，删除最旧的 session
+    """
+    global quiz_sessions
+
+    if len(quiz_sessions) > MAX_SESSIONS:
+        # 按 started_at 排序，删除最旧的
+        sorted_sessions = sorted(
+            quiz_sessions.items(),
+            key=lambda x: x[1].started_at
+        )
+        # 保留最新的 MAX_SESSIONS * 0.8 个
+        keep_count = int(MAX_SESSIONS * 0.8)
+        keys_to_remove = [k for k, _ in sorted_sessions[:-keep_count]]
+
+        for key in keys_to_remove:
+            del quiz_sessions[key]
+
+        logger.warning(
+            f"⚠️ Session 数量超过限制 ({MAX_SESSIONS})，"
+            f"已清理 {len(keys_to_remove)} 个最旧 session"
+        )
 
 
 # ============ 辅助函数 ============
@@ -812,6 +874,10 @@ async def start_quiz_session(
 
     返回 session_id 和题目列表
     """
+    # 清理过期 session（每次创建新 session 时执行）
+    cleanup_expired_sessions()
+    prune_sessions_if_needed()
+
     # 获取章节题目
     result = await db.execute(
         select(Question).where(
@@ -1075,8 +1141,9 @@ async def complete_quiz_session(
         time_spent = (session.completed_at - session.started_at).total_seconds()
         time_spent_minutes = int(time_spent / 60)
 
-    # 清理 session（可选：保留一段时间供查询）
-    # del quiz_sessions[session_id]
+    # 清理 session（完成后立即删除以释放内存）
+    # Session 数据已通过返回值传递给前端，无需保留
+    del quiz_sessions[session_id]
 
     return {
         "score": round(score, 1),

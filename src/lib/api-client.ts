@@ -102,6 +102,13 @@ export async function fetchWithAuth(
   if (response.status === 401 && token) {
     if (isRefreshing) {
       // 如果正在刷新，将请求加入队列
+      // 但首先检查是否还有有效的 refresh_token
+      const refreshToken = localStorage.getItem('refresh_token')
+      if (!refreshToken) {
+        // 没有 refresh_token，直接拒绝请求
+        throw new Error('No refresh token available')
+      }
+
       return new Promise((resolve, reject) => {
         failedQueue.push({ resolve, reject })
       })
@@ -141,7 +148,11 @@ export async function fetchWithAuth(
       response = await fetch(url, retryOptions)
 
     } catch (error) {
-      // 刷新失败，清除 tokens 并跳转到登录页
+      // 先重置状态，防止新请求被挂起
+      isRefreshing = false
+      failedQueue = []
+
+      // 处理队列中的请求（它们会被拒绝）
       processQueue(error, null)
 
       // 触发登出事件（通知所有组件更新UI并显示提示）

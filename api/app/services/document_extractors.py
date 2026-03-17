@@ -142,6 +142,24 @@ class PptxExtractor(DocumentExtractor):
             raise
 
 
+class UnsupportedFormatExtractor(DocumentExtractor):
+    """
+    不支持格式的提取器 - 用于提供清晰的错误信息
+
+    某些旧格式（如 .ppt）与对应的新格式（.pptx）完全不兼容，
+    使用这个提取器可以提供明确的错误信息。
+    """
+
+    def __init__(self, format_name: str, suggestion: str):
+        self.format_name = format_name
+        self.suggestion = suggestion
+
+    def extract_text(self, file_path: str) -> str:
+        raise ValueError(
+            f"不支持的文件格式: {self.format_name}。{self.suggestion}"
+        )
+
+
 class DocumentExtractorFactory:
     """文档提取器工厂类"""
 
@@ -152,7 +170,12 @@ class DocumentExtractorFactory:
         'docx': DocxExtractor,
         'docm': DocxExtractor,  # .docm 也是 docx 格式
         'pptx': PptxExtractor,
-        'ppt': PptxExtractor,   # .ppt 实际上需要不同的处理，这里暂用 pptx
+        # .ppt 是旧版 PowerPoint 格式（二进制），与 .pptx（XML格式）完全不同
+        # 提供明确的错误信息，建议用户转换格式
+        'ppt': lambda: UnsupportedFormatExtractor(
+            format_name='.ppt (旧版 PowerPoint)',
+            suggestion='请将文件另存为 .pptx 格式后重新上传。'
+        ),
     }
 
     @classmethod
