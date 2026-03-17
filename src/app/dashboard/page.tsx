@@ -67,6 +67,8 @@ export default function DashboardPage() {
   const [recentActivities, setRecentActivities] = useState<any[]>([])
   const [studyDays, setStudyDays] = useState<any[]>([])
   const [studyCurveData, setStudyCurveData] = useState<any[]>([])
+  const [isCompetencyLoading, setIsCompetencyLoading] = useState(false)
+  const [isCalendarLoading, setIsCalendarLoading] = useState(false)
 
   // 获取用户当前风格（从后端获取，不可修改）
   const teachingStyle = user?.teachingStyle || 3
@@ -416,6 +418,34 @@ export default function DashboardPage() {
     }
   }
 
+  // 刷新能力数据
+  const handleRefreshCompetency = async () => {
+    if (!user?.id || !selectedDocumentId || !token) return
+    setIsCompetencyLoading(true)
+    try {
+      const competency = await fetchCompetencyData(user.id, selectedDocumentId, token)
+      setCompetencyData(competency)
+    } catch (error) {
+      console.error('刷新能力数据失败:', error)
+    } finally {
+      setIsCompetencyLoading(false)
+    }
+  }
+
+  // 刷新学习日历数据
+  const handleRefreshCalendar = async () => {
+    if (!user?.id || !token) return
+    setIsCalendarLoading(true)
+    try {
+      const calendarData = await fetchStudyCalendar(user.id, token)
+      setStudyDays(calendarData || [])
+    } catch (error) {
+      console.error('刷新学习日历失败:', error)
+    } finally {
+      setIsCalendarLoading(false)
+    }
+  }
+
   const handleNodeClick = (node: any) => {
     console.log('Clicked node:', node)
     // 可以在这里添加导航到具体章节的逻辑
@@ -522,7 +552,7 @@ export default function DashboardPage() {
             >
               <StatCard
                 title="完成章节"
-                value={stats?.completed_chapters || 0}
+                value={userStats?.completed_chapters || 0}
                 unit="个"
                 icon={<BookOpen className="w-5 h-5 text-gray-700" />}
                 trend={{
@@ -540,7 +570,7 @@ export default function DashboardPage() {
             >
               <StatCard
                 title="学习进度"
-                value={stats?.overall_progress || 0}
+                value={userStats?.overall_progress || 0}
                 unit="%"
                 icon={<TrendingUp className="w-5 h-5 text-gray-700" />}
                 trend={{
@@ -572,7 +602,7 @@ export default function DashboardPage() {
             >
               <StatCard
                 title="错题数量"
-                value={mistakesCount || 0}
+                value={mistakeStats?.total_mistakes || 0}
                 unit="道"
                 icon={<AlertCircle className="w-5 h-5 text-gray-700" />}
                 trend={{
@@ -610,7 +640,7 @@ export default function DashboardPage() {
                 title="知识图谱"
                 description="概念关联网络"
                 showRefresh
-                onRefresh={loadCompetencyData}
+                onRefresh={handleRefreshCompetency}
                 isRefreshing={isCompetencyLoading}
               >
                 <KnowledgeConstellation
@@ -648,11 +678,8 @@ export default function DashboardPage() {
                 title="学习日历"
                 description="最近30天的学习活动"
                 showRefresh
-                onRefresh={() => {
-                  if (selectedDocumentId) {
-                    loadCalendarData(selectedDocumentId);
-                  }
-                }}
+                onRefresh={handleRefreshCalendar}
+                isRefreshing={isCalendarLoading}
               >
                 <StudyCalendar
                   documentId={selectedDocumentId}

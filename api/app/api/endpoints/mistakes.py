@@ -14,6 +14,7 @@ from app.schemas.mistake import (
     MistakeResponse,
     MistakeListResponse,
     MarkMasteredRequest,
+    MistakeAnalysis,
     MistakeAnalysisResponse,
     PracticeConfig,
     PracticeSessionResponse,
@@ -22,6 +23,16 @@ from app.schemas.mistake import (
 from app.core.security import get_current_user
 
 router = APIRouter(prefix="/api/mistakes", tags=["mistakes"])
+
+# 能力维度名称映射
+DIMENSION_NAMES = {
+    'comprehension': '理解力',
+    'logic': '逻辑',
+    'terminology': '术语',
+    'memory': '记忆',
+    'application': '应用',
+    'stability': '稳定性'
+}
 
 
 # ============ 辅助函数 ============
@@ -241,15 +252,6 @@ async def get_mistake_analysis(
             dimension_stats[dimension]['mastered_count'] += 1
 
     # 分析每个维度
-    dimension_names = {
-        'comprehension': '理解力',
-        'logic': '逻辑',
-        'terminology': '术语',
-        'memory': '记忆',
-        'application': '应用',
-        'stability': '稳定性'
-    }
-
     analysis_by_dimension = []
     weak_dimensions = []
 
@@ -283,7 +285,7 @@ async def get_mistake_analysis(
 
         analysis_by_dimension.append(MistakeAnalysis(
             dimension=dimension,
-            dimension_name=dimension_names.get(dimension, dimension),
+            dimension_name=DIMENSION_NAMES.get(dimension, dimension),
             total_mistakes=total,
             mastered_count=mastered,
             mistake_rate=mistake_rate,
@@ -297,7 +299,7 @@ async def get_mistake_analysis(
     # 生成复习计划建议
     suggested_review_plan = []
     if weak_dimensions:
-        weak_names = [dimension_names.get(d, d) for d in weak_dimensions]
+        weak_names = [DIMENSION_NAMES.get(d, d) for d in weak_dimensions]
         suggested_review_plan.append(f"优先复习薄弱环节：{', '.join(weak_names)}")
         suggested_review_plan.append("建议每天花30分钟专项练习")
     else:
@@ -310,7 +312,7 @@ async def get_mistake_analysis(
         total_mistakes=total_mistakes,
         mastered_mistakes=mastered_mistakes,
         analysis_by_dimension=analysis_by_dimension,
-        weak_dimensions=[dimension_names.get(d, d) for d in weak_dimensions],
+        weak_dimensions=[DIMENSION_NAMES.get(d, d) for d in weak_dimensions],
         suggested_review_plan=suggested_review_plan
     )
 
@@ -336,6 +338,7 @@ async def create_practice_session(
             query.where(Question.id.in_(config.question_ids))
         )
         selected_mistakes = result.all()
+        all_mistakes = selected_mistakes  # 设置 all_mistakes 避免后续未定义
 
         if len(selected_mistakes) == 0:
             raise HTTPException(
@@ -409,7 +412,7 @@ async def create_practice_session(
     # 确定练习重点
     focus_area = []
     if config.dimension:
-        focus_area.append(f"{dimension_names.get(config.dimension, config.dimension)}专项练习")
+        focus_area.append(f"{DIMENSION_NAMES.get(config.dimension, config.dimension)}专项练习")
     if config.chapter_number:
         focus_area.append(f"第{config.chapter_number}章专项")
     if config.difficulty:

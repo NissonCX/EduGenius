@@ -832,7 +832,7 @@ async def redivide_chapters(
 
     except Exception as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_SERVER_ERROR,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"章节划分失败: {str(e)}"
         )
 
