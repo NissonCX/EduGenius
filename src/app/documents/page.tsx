@@ -5,7 +5,7 @@
  * 集成上传和列表功能
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Upload, FileText, Trash2, BookOpen, X, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 import Link from 'next/link'
@@ -44,12 +44,16 @@ export default function DocumentsPage() {
   const [username, setUsername] = useState<string>('用户')
   const [mounted, setMounted] = useState(false)
 
+  // 跟踪组件是否已挂载，用于 setTimeout 清理
+  const isMountedRef = useRef(true)
+
   // 错误提示状态
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   // 客户端挂载后读取用户信息
   useEffect(() => {
     setMounted(true)
+    isMountedRef.current = true
     const userStr = localStorage.getItem('user')
     if (userStr) {
       try {
@@ -58,6 +62,9 @@ export default function DocumentsPage() {
       } catch {
         setUsername('用户')
       }
+    }
+    return () => {
+      isMountedRef.current = false
     }
   }, [])
 
@@ -106,21 +113,29 @@ export default function DocumentsPage() {
   // 轮询设置
   useEffect(() => {
     let intervalId: NodeJS.Timeout | null = null
+    let isMounted = true
 
     const startPolling = async () => {
-      // 页面可见时立即加载一次
-      const hasProcessing = await loadDocuments()
+      try {
+        // 页面可见时立即加载一次
+        const hasProcessing = await loadDocuments()
 
-      // 如果有正在处理的文档，启动轮询
-      if (hasProcessing) {
-        intervalId = setInterval(async () => {
-          const stillProcessing = await loadDocuments()
-          // 如果没有正在处理的文档了，停止轮询
-          if (!stillProcessing && intervalId) {
-            clearInterval(intervalId)
-            intervalId = null
-          }
-        }, 3000)  // 每3秒轮询一次
+        // 检查组件是否仍然挂载
+        if (!isMounted) return
+
+        // 如果有正在处理的文档，启动轮询
+        if (hasProcessing) {
+          intervalId = setInterval(async () => {
+            const stillProcessing = await loadDocuments()
+            // 如果没有正在处理的文档了，停止轮询
+            if (!stillProcessing && intervalId) {
+              clearInterval(intervalId)
+              intervalId = null
+            }
+          }, 3000)  // 每3秒轮询一次
+        }
+      } catch (err) {
+        console.error('轮询失败:', err)
       }
     }
 
@@ -128,6 +143,7 @@ export default function DocumentsPage() {
 
     // 清理函数
     return () => {
+      isMounted = false
       if (intervalId) {
         clearInterval(intervalId)
       }
@@ -239,8 +255,10 @@ export default function DocumentsPage() {
 
         // 3秒后重置状态
         setTimeout(() => {
-          setUploadStatus('idle')
-          setUploadMessage('')
+          if (isMountedRef.current) {
+            setUploadStatus('idle')
+            setUploadMessage('')
+          }
         }, 3000)
       } else {
         setUploadStatus('partial')
@@ -249,8 +267,10 @@ export default function DocumentsPage() {
 
         // 5秒后重置状态
         setTimeout(() => {
-          setUploadStatus('idle')
-          setUploadMessage('')
+          if (isMountedRef.current) {
+            setUploadStatus('idle')
+            setUploadMessage('')
+          }
         }, 5000)
       }
 
@@ -276,12 +296,20 @@ export default function DocumentsPage() {
         setDocuments(prev => prev.filter(doc => doc.id !== documentId))
       } else {
         setErrorMessage('删除失败，请稍后重试')
-        setTimeout(() => setErrorMessage(null), 3000)
+        setTimeout(() => {
+          if (isMountedRef.current) {
+            setErrorMessage(null)
+          }
+        }, 3000)
       }
     } catch (err) {
       console.error('删除失败:', err)
       setErrorMessage('删除失败，请稍后重试')
-      setTimeout(() => setErrorMessage(null), 3000)
+      setTimeout(() => {
+        if (isMountedRef.current) {
+          setErrorMessage(null)
+        }
+      }, 3000)
     }
   }
 

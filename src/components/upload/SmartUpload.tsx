@@ -158,7 +158,7 @@ export function SmartUpload({ onUploadComplete, onError }: SmartUploadProps) {
   useEffect(() => {
     return () => {
       if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current)
+        clearTimeout(pollIntervalRef.current)
       }
       if (countdownRef.current) {
         clearInterval(countdownRef.current)

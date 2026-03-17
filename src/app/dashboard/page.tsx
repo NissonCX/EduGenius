@@ -143,6 +143,25 @@ export default function DashboardPage() {
     loadData()
   }, [user.id, isAuthenticated, authLoading, selectedDocumentId])
 
+  // 监听测验完成事件，刷新能力数据
+  useEffect(() => {
+    const handleQuizCompleted = async (event: CustomEvent) => {
+      console.log('收到测验完成事件:', event.detail)
+      if (user?.id && selectedDocumentId && token) {
+        try {
+          const competency = await fetchCompetencyData(user.id, selectedDocumentId, token)
+          setCompetencyData(competency)
+          console.log('能力数据已刷新')
+        } catch (error) {
+          console.error('刷新能力数据失败:', error)
+        }
+      }
+    }
+
+    window.addEventListener('quiz-completed', handleQuizCompleted as EventListener)
+    return () => window.removeEventListener('quiz-completed', handleQuizCompleted as EventListener)
+  }, [user?.id, selectedDocumentId, token])
+
   // 当用户选择不同文档时
   const handleDocumentChange = (docId: number) => {
     setSelectedDocumentId(docId)

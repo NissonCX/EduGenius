@@ -209,9 +209,11 @@ function QuizPageContent() {
   };
 
   const handleCompetencyUpdate = (competencyData: any) => {
-    // 可以在这里触发全局状态更新
+    // 触发全局事件通知 Dashboard 刷新能力数据
     console.log('Competency data updated:', competencyData);
-    // TODO: 更新全局能力数据状态或触发Dashboard刷新
+    window.dispatchEvent(new CustomEvent('quiz-completed', {
+      detail: { competencyData, timestamp: Date.now(), documentId: docId, chapterId }
+    }));
   };
 
   const handleRetry = () => {

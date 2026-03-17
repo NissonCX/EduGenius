@@ -374,9 +374,20 @@ export function StudyChat({
 
     } catch (error: any) {
       // 🔥 处理 AbortError - 用户取消请求或组件卸载
-      if (error.name === 'AbortError' || error.name === 'TypeError') {
-        console.log('SSE 连接已取消或组件已卸载')
+      if (error.name === 'AbortError') {
+        console.log('SSE 连接已取消')
         return
+      }
+
+      // 🔥 处理 TypeError - 网络错误等
+      if (error.name === 'TypeError') {
+        const message = error.message?.toLowerCase() || ''
+        if (message.includes('fetch') || message.includes('network') || message.includes('abort')) {
+          console.log('SSE 网络错误:', error.message)
+          return
+        }
+        // 其他 TypeError 可能是编程错误，需要记录
+        console.error('SSE TypeError (可能是编程错误):', error)
       }
 
       const apiError = handleApiError(error)

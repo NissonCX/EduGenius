@@ -196,7 +196,8 @@ class ChapterDivider:
                     else:
                         try:
                             chapter_num = int(chapter_num_str)
-                        except:
+                        except ValueError:
+                            print(f"   ⚠️  无法解析章节编号: {chapter_num_str}")
                             continue
                     
                     # 清理标题（去掉页码、多余空格等）

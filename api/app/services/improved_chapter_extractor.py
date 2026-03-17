@@ -493,7 +493,8 @@ class ImprovedChapterExtractor:
                     fixed_json = re.sub(r',\s*([}\]])', r'\1', json_str)
                     data = json.loads(fixed_json)
                     print(f"   ✅ JSON 修复后解析成功")
-                except:
+                except json.JSONDecodeError as e:
+                    print(f"   ❌ JSON 修复后仍然解析失败: {e}")
                     return None
 
             if not data.get('has_toc'):

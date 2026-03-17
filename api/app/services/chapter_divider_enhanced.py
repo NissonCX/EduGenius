@@ -284,7 +284,8 @@ class EnhancedChapterDivider:
                         fixed_json = re.sub(r',\s*([}\]])', r'\1', json_str)
                         parsed_result = json.loads(fixed_json)
                         print("✅ JSON 修复后解析成功")
-                    except:
+                    except json.JSONDecodeError as e:
+                        print(f"   ❌ JSON 修复后仍然解析失败: {e}")
                         return {"has_toc": False}
 
                 # 验证结果

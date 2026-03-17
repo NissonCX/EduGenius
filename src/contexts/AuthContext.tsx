@@ -43,7 +43,40 @@ interface AuthProviderProps {
   children: ReactNode
 }
 
-// 防止并发刷新请求
+// 防止并发刷新请求（跨标签页）
+const TOKEN_REFRESH_LOCK_KEY = 'token_refresh_lock'
+const LOCK_TIMEOUT_MS = 10000 // 10秒锁超时
+
+// 获取跨标签页刷新锁
+const acquireRefreshLock = (): boolean => {
+  try {
+    const lockData = localStorage.getItem(TOKEN_REFRESH_LOCK_KEY)
+    if (lockData) {
+      const { timestamp } = JSON.parse(lockData)
+      // 检查锁是否过期
+      if (Date.now() - timestamp < LOCK_TIMEOUT_MS) {
+        return false // 锁被其他标签页持有
+      }
+    }
+    // 获取锁
+    localStorage.setItem(TOKEN_REFRESH_LOCK_KEY, JSON.stringify({ timestamp: Date.now() }))
+    return true
+  } catch {
+    // localStorage 不可用时，允许刷新
+    return true
+  }
+}
+
+// 释放跨标签页刷新锁
+const releaseRefreshLock = () => {
+  try {
+    localStorage.removeItem(TOKEN_REFRESH_LOCK_KEY)
+  } catch {
+    // 忽略错误
+  }
+}
+
+// 防止并发刷新请求（单标签页内）
 let isRefreshing = false
 
 /**
@@ -186,13 +219,32 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   // 刷新 Token
   const refreshTokenFunc = useCallback(async (): Promise<boolean> => {
-    // 防止并发刷新
+    // 防止并发刷新（单标签页内）
     if (isRefreshing) {
+      return false
+    }
+
+    // 防止并发刷新（跨标签页）
+    if (!acquireRefreshLock()) {
+      console.log('另一个标签页正在刷新 Token，等待...')
+      // 等待其他标签页完成刷新
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      // 检查是否有新的 token
+      const newToken = localStorage.getItem('token')
+      if (newToken && newToken !== authState.token) {
+        setAuthState(prev => ({
+          ...prev,
+          token: newToken,
+          user: { ...prev.user, token: newToken }
+        }))
+        return true
+      }
       return false
     }
 
     const currentRefreshToken = authState.refreshToken || localStorage.getItem('refresh_token')
     if (!currentRefreshToken) {
+      releaseRefreshLock()
       return false
     }
 
@@ -236,8 +288,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       return false
     } finally {
       isRefreshing = false
+      releaseRefreshLock()
     }
-  }, [authState.refreshToken, logout])
+  }, [authState.refreshToken, authState.token, logout])
 
   // 更新用户信息
   const updateUser = useCallback((updates: Partial<User>) => {

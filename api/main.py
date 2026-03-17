@@ -139,7 +139,8 @@ async def health():
         try:
             is_connected = await redis_client.is_connected()
             redis_status = "connected" if is_connected else "disconnected"
-        except:
+        except Exception as e:
+            logger.warning(f"Redis 连接检查失败: {e}")
             redis_status = "error"
 
     return {

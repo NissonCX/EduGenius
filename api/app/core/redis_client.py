@@ -98,7 +98,8 @@ class RedisClient:
         try:
             await self._client.ping()
             return True
-        except:
+        except Exception as e:
+            logger.debug(f"Redis ping 失败: {e}")
             return False
 
     async def get(self, key: str) -> Optional[str]:

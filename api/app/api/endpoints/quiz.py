@@ -25,6 +25,9 @@ from app.schemas.quiz import (
     ChapterTestResult
 )
 from app.core.security import get_current_user
+from app.core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/quiz", tags=["quiz"])
 
@@ -538,7 +541,8 @@ async def get_chapter_questions(
                 try:
                     import json
                     q_dict["options"] = json.loads(q.options) if isinstance(q.options, str) else q.options
-                except:
+                except json.JSONDecodeError as e:
+                    logger.warning(f"题目 {q.id} 的 options JSON 解析失败: {e}")
                     q_dict["options"] = None
             questions_data.append(q_dict)
 
@@ -844,7 +848,8 @@ async def start_quiz_session(
         if q.options:
             try:
                 q_dict["options"] = json.loads(q.options) if isinstance(q.options, str) else q.options
-            except:
+            except json.JSONDecodeError as e:
+                logger.warning(f"题目 {q.id} 的 options JSON 解析失败: {e}")
                 q_dict["options"] = None
         questions_data.append(q_dict)
 
