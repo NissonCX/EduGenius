@@ -3,8 +3,8 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, BookOpen, Brain, CheckCircle, Sparkles } from 'lucide-react';
-import { Quiz, QuizResult } from '@/components/quiz';
-import { safeFetch } from '@/lib/errors';
+import { Quiz } from '@/components/quiz';
+import QuizResult from '@/components/quiz/QuizResult';
 import { useAuth } from '@/contexts/AuthContext';
 import { getApiUrl } from '@/lib/config';
 import { Skeleton, ChatListSkeleton } from '@/components/ui/Skeleton';
@@ -12,50 +12,44 @@ import {
   ProgressStepper,
   ProgressStep,
   TimeEstimate,
-  AnimatedLoader
 } from '@/components/ui/EnhancedLoading';
+import {
+  startQuizSession,
+  generateQuestions,
+  type Question,
+  type CompleteSessionResponse,
+  type StartSessionResponse
+} from '@/lib/quiz-api';
 
-interface Question {
-  id: number;
-  question_type: string;
-  question_text: string;
-  options?: { [key: string]: string };
-  correct_answer: string;
-  explanation?: string;
-  difficulty: number;
-  competency_dimension?: string;
-}
-
-interface QuizResults {
-  total: number;
-  correct: number;
-  score: number;
-  answers: { questionId: number; userAnswer: string; isCorrect: boolean }[];
+interface ProgressStepData {
+  icon: React.ReactNode;
+  label: string;
+  status: 'pending' | 'processing' | 'completed' | 'error';
 }
 
 function QuizPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, token, getAuthHeaders } = useAuth();
-  
-  // 使用新的参数名称
+
+  // URL 参数
   const docId = searchParams.get('doc');
   const chapterId = searchParams.get('chapter');
-  const subsectionId = searchParams.get('subsection'); // 新增：小节参数
-  const mode = searchParams.get('mode') || 'practice'; // 'practice' or 'test'
+  const subsectionId = searchParams.get('subsection'); // 小节参数
+  const mode = (searchParams.get('mode') as 'practice' | 'test') || 'practice';
 
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showResult, setShowResult] = useState(false);
-  const [quizResults, setQuizResults] = useState<QuizResults | null>(null);
+  const [quizResults, setQuizResults] = useState<CompleteSessionResponse | null>(null);
   const [documentTitle, setDocumentTitle] = useState('');
   const [chapterTitle, setChapterTitle] = useState('');
-  const [subsectionTitle, setSubsectionTitle] = useState(''); // 新增：小节标题
   const [generationStartTime, setGenerationStartTime] = useState<number>(0);
   const [currentGenerationStep, setCurrentGenerationStep] = useState(0);
-  const [generationSteps, setGenerationSteps] = useState<ProgressStep[]>([
+  const [generationSteps, setGenerationSteps] = useState<ProgressStepData[]>([
     { icon: <BookOpen className="w-5 h-5" />, label: '分析章节内容', status: 'pending' },
     { icon: <Brain className="w-5 h-5" />, label: 'AI 生成题目', status: 'pending' },
     { icon: <CheckCircle className="w-5 h-5" />, label: '验证答案准确性', status: 'pending' },
@@ -64,13 +58,45 @@ function QuizPageContent() {
 
   useEffect(() => {
     if (docId && chapterId) {
-      loadChapterInfo();
-      loadQuestions();
+      initializeQuiz();
     } else {
       setError('缺少必需参数：doc 或 chapter');
       setLoading(false);
     }
-  }, [docId, chapterId, subsectionId]); // 添加 subsectionId 依赖
+  }, [docId, chapterId, subsectionId]);
+
+  const initializeQuiz = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // 1. 加载章节信息
+      await loadChapterInfo();
+
+      // 2. 尝试开始测试 session
+      try {
+        const sessionResponse = await startQuizSession({
+          documentId: parseInt(docId!),
+          chapterNumber: parseInt(chapterId!),
+          subsectionNumber: subsectionId || undefined,
+          questionCount: 10,
+          mode: mode
+        });
+
+        setSessionId(sessionResponse.session_id);
+        setQuestions(sessionResponse.questions);
+      } catch (sessionError) {
+        // 如果 session 失败（可能是没有题目），尝试生成题目
+        console.log('Session start failed, trying to generate questions:', sessionError);
+        await generateAndStartSession();
+      }
+    } catch (err) {
+      console.error('Error initializing quiz:', err);
+      setError(err instanceof Error ? err.message : '初始化测试失败');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const loadChapterInfo = async () => {
     try {
@@ -91,63 +117,13 @@ function QuizPageContent() {
     }
   };
 
-  const loadQuestions = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // 构建API URL，如果有小节参数则添加
-      let apiUrl = `/api/quiz/questions/${docId}/${chapterId}`;
-      if (subsectionId) {
-        apiUrl += `?subsection_number=${encodeURIComponent(subsectionId)}`;
-      }
-
-      // Get questions from API
-      const response = await fetch(
-        getApiUrl(apiUrl),
-        { headers: getAuthHeaders() }
-      );
-
-      if (!response.ok) {
-        throw new Error('获取题目失败');
-      }
-
-      const data = await response.json();
-
-      if (data.questions.length === 0) {
-        // Generate sample questions if none exist
-        await generateSampleQuestions();
-      } else {
-        setQuestions(data.questions);
-      }
-    } catch (err) {
-      console.error('Error loading questions:', err);
-      setError(err instanceof Error ? err.message : '加载题目失败');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const generateSampleQuestions = async () => {
+  const generateAndStartSession = async () => {
     try {
       setGenerating(true);
       setGenerationStartTime(Date.now());
 
-      const requestBody: any = {
-        document_id: parseInt(docId!),
-        chapter_number: parseInt(chapterId!),
-        question_type: 'choice',
-        difficulty: 3,
-        count: 5
-      };
-
-      // 如果有小节参数，添加到请求中
-      if (subsectionId) {
-        requestBody.subsection_number = subsectionId;
-      }
-
       // 模拟步骤进度
-      const updateStep = (stepIndex: number, status: ProgressStep['status']) => {
+      const updateStep = (stepIndex: number, status: ProgressStepData['status']) => {
         setGenerationSteps(prev => {
           const newSteps = [...prev];
           newSteps[stepIndex].status = status;
@@ -165,15 +141,14 @@ function QuizPageContent() {
       updateStep(1, 'processing');
       await new Promise(resolve => setTimeout(resolve, 1200));
 
-      const response = await fetch(getApiUrl('/api/quiz/generate'), {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(requestBody)
+      const generatedQuestions = await generateQuestions({
+        documentId: parseInt(docId!),
+        chapterNumber: parseInt(chapterId!),
+        subsectionNumber: subsectionId || undefined,
+        questionType: 'choice',
+        difficulty: 3,
+        count: 5
       });
-
-      if (!response.ok) {
-        throw new Error('生成题目失败');
-      }
 
       updateStep(1, 'completed');
 
@@ -184,18 +159,29 @@ function QuizPageContent() {
 
       // 步骤 4: 优化题目
       updateStep(3, 'processing');
-      const data = await response.json();
       await new Promise(resolve => setTimeout(resolve, 400));
       updateStep(3, 'completed');
 
-      setQuestions(data);
+      // 生成成功后，重新开始 session
+      const sessionResponse = await startQuizSession({
+        documentId: parseInt(docId!),
+        chapterNumber: parseInt(chapterId!),
+        subsectionNumber: subsectionId || undefined,
+        questionCount: generatedQuestions.length,
+        mode: mode
+      });
+
+      setSessionId(sessionResponse.session_id);
+      setQuestions(sessionResponse.questions);
     } catch (err) {
       console.error('Error generating questions:', err);
       setError(err instanceof Error ? err.message : '生成题目失败');
       // 标记当前步骤为错误
       setGenerationSteps(prev => {
         const newSteps = [...prev];
-        newSteps[currentGenerationStep].status = 'error';
+        if (newSteps[currentGenerationStep]) {
+          newSteps[currentGenerationStep].status = 'error';
+        }
         return newSteps;
       });
     } finally {
@@ -203,23 +189,31 @@ function QuizPageContent() {
     }
   };
 
-  const handleQuizComplete = (results: QuizResults) => {
+  const handleQuizComplete = (results: CompleteSessionResponse) => {
     setQuizResults(results);
     setShowResult(true);
+
+    // 触发全局事件通知 Dashboard 刷新能力数据
+    window.dispatchEvent(new CustomEvent('quiz-completed', {
+      detail: {
+        competencyData: results.competency_analysis,
+        timestamp: Date.now(),
+        documentId: docId,
+        chapterId
+      }
+    }));
   };
 
   const handleCompetencyUpdate = (competencyData: any) => {
-    // 触发全局事件通知 Dashboard 刷新能力数据
     console.log('Competency data updated:', competencyData);
-    window.dispatchEvent(new CustomEvent('quiz-completed', {
-      detail: { competencyData, timestamp: Date.now(), documentId: docId, chapterId }
-    }));
   };
 
   const handleRetry = () => {
     setShowResult(false);
     setQuizResults(null);
-    loadQuestions();
+    setSessionId(null);
+    setQuestions([]);
+    initializeQuiz();
   };
 
   const handleNextChapter = () => {
@@ -262,7 +256,7 @@ function QuizPageContent() {
               {/* 进度步骤 */}
               <div className="mb-6">
                 <ProgressStepper
-                  steps={generationSteps}
+                  steps={generationSteps as ProgressStep[]}
                   currentStep={currentGenerationStep}
                 />
               </div>
@@ -303,23 +297,71 @@ function QuizPageContent() {
   }
 
   if (showResult && quizResults) {
-    const passed = quizResults.score >= 60;
+    // 将 competency_analysis 转换为 QuizResult 组件期望的格式
+    const competencyScores: { [key: string]: number } = {};
+    if (quizResults.competency_analysis) {
+      for (const [key, value] of Object.entries(quizResults.competency_analysis)) {
+        if (value !== null) {
+          // 转换为 0-1 的比例
+          competencyScores[key] = value / 100;
+        }
+      }
+    }
 
     return (
-      <QuizResult
-        score={quizResults.score}
-        correctCount={quizResults.correct}
-        totalCount={quizResults.total}
-        passed={passed}
-        recommendations={
-          passed
-            ? ['🎉 恭喜通过测试！可以进入下一章节学习。']
-            : ['📚 建议复习本章内容后再进行测试。']
-        }
-        onRetry={!passed ? handleRetry : undefined}
-        onNextChapter={passed ? handleNextChapter : undefined}
-        onViewMistakes={handleViewMistakes}
-      />
+      <div className="min-h-screen bg-white">
+        {/* 顶部导航栏 */}
+        <div className="border-b border-gray-200 bg-white">
+          <div className="max-w-7xl mx-auto px-6 py-4">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={handleBackToChapters}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5 text-gray-600" />
+              </button>
+              <div>
+                <h1 className="font-semibold text-lg text-black">
+                  {chapterTitle || `第 ${chapterId} 章`} - 测试结果
+                </h1>
+                <p className="text-sm text-gray-500">{documentTitle}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="max-w-4xl mx-auto px-6 py-8">
+          <QuizResult
+            score={quizResults.score}
+            correctCount={quizResults.correct}
+            totalCount={quizResults.total}
+            competencyScores={competencyScores}
+            recommendations={quizResults.recommendations}
+            passed={quizResults.passed}
+            onRetry={!quizResults.passed ? handleRetry : undefined}
+            onNextChapter={quizResults.passed ? handleNextChapter : undefined}
+            onViewMistakes={quizResults.mistake_ids.length > 0 ? handleViewMistakes : undefined}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // 检查是否有有效的 session
+  if (!sessionId || questions.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="text-center">
+          <div className="text-6xl mb-4">📝</div>
+          <p className="text-gray-700 mb-4">暂无可用题目</p>
+          <button
+            onClick={handleBackToChapters}
+            className="px-6 py-3 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors"
+          >
+            返回章节
+          </button>
+        </div>
+      </div>
     );
   }
 
@@ -354,6 +396,7 @@ function QuizPageContent() {
       <div className="max-w-4xl mx-auto px-6 py-8">
         <Quiz
           questions={questions}
+          sessionId={sessionId}
           onComplete={handleQuizComplete}
           documentId={parseInt(docId!)}
           chapterNumber={parseInt(chapterId!)}

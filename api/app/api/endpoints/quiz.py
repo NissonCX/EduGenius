@@ -50,16 +50,19 @@ class QuizSession:
         document_id: int,
         chapter_number: int,
         questions: List[dict],
-        mode: str = "practice"
+        mode: str = "practice",
+        subsection_number: Optional[str] = None
     ):
         self.session_id = session_id
         self.user_id = user_id
         self.document_id = document_id
         self.chapter_number = chapter_number
+        self.subsection_number = subsection_number  # 新增：小节编号
         self.questions = questions  # 题目列表
         self.mode = mode  # practice 或 test
         self.answers = {}  # {question_id: answer}
         self.results = {}  # {question_id: is_correct}
+        self.time_spent = {}  # {question_id: time_spent_seconds} 新增：每题用时
         self.current_question_index = 0
         self.started_at = datetime.now()
         self.completed_at = None
@@ -859,6 +862,7 @@ class StartSessionRequest(BaseModel):
     """开始测试请求"""
     document_id: int
     chapter_number: int
+    subsection_number: Optional[str] = None  # 可选的小节编号，如 "1.1"
     question_count: int = 10
     mode: str = "practice"  # practice 或 test
 
@@ -873,20 +877,26 @@ async def start_quiz_session(
     开始一个新的测试 session
 
     返回 session_id 和题目列表
+    支持 chapter_number 和 subsection_number 筛选
     """
     # 清理过期 session（每次创建新 session 时执行）
     cleanup_expired_sessions()
     prune_sessions_if_needed()
 
-    # 获取章节题目
+    # 构建查询条件
+    conditions = [
+        Question.document_id == request.document_id,
+        Question.chapter_number == request.chapter_number,
+        Question.is_active == 1
+    ]
+
+    # 如果指定了小节，添加小节筛选条件
+    if request.subsection_number:
+        conditions.append(Question.subsection_number == request.subsection_number)
+
+    # 获取章节/小节题目
     result = await db.execute(
-        select(Question).where(
-            and_(
-                Question.document_id == request.document_id,
-                Question.chapter_number == request.chapter_number,
-                Question.is_active == 1
-            )
-        )
+        select(Question).where(and_(*conditions))
     )
     all_questions = result.scalars().all()
 
@@ -926,6 +936,7 @@ async def start_quiz_session(
         user_id=current_user.id,
         document_id=request.document_id,
         chapter_number=request.chapter_number,
+        subsection_number=request.subsection_number,  # 新增：小节编号
         questions=questions_data,
         mode=request.mode
     )
@@ -936,7 +947,9 @@ async def start_quiz_session(
         "questions": questions_data,
         "total_questions": len(questions_data),
         "estimated_time": len(questions_data) * 2,  # 每题约 2 分钟
-        "mode": request.mode
+        "mode": request.mode,
+        "chapter_number": request.chapter_number,
+        "subsection_number": request.subsection_number  # 新增：返回小节编号
     }
 
 
@@ -993,9 +1006,70 @@ async def submit_session_answer(
     # 验证答案
     is_correct = request.answer.strip().upper() == question.correct_answer.strip().upper()
 
-    # 记录答案和结果
+    # 记录答案、结果和用时到 session
     session.answers[question_id] = request.answer
     session.results[question_id] = is_correct
+    session.time_spent[question_id] = request.time_spent  # 新增：记录每题用时
+
+    # 更新当前题目索引（用于跟踪进度）
+    session.current_question_index += 1
+
+    # 保存答题记录到数据库
+    try:
+        # 获取或创建 progress 记录
+        progress_result = await db.execute(
+            select(Progress).where(
+                and_(
+                    Progress.user_id == current_user.id,
+                    Progress.document_id == session.document_id,
+                    Progress.chapter_number == session.chapter_number
+                )
+            )
+        )
+        progress = progress_result.scalar_one_or_none()
+
+        if not progress:
+            # 创建 progress 记录
+            progress = Progress(
+                user_id=current_user.id,
+                document_id=session.document_id,
+                chapter_number=session.chapter_number,
+                status="in_progress",
+                cognitive_level_assigned=current_user.cognitive_level
+            )
+            db.add(progress)
+            await db.flush()
+
+        # 记录答题尝试
+        attempt = QuizAttempt(
+            user_id=current_user.id,
+            progress_id=progress.id,
+            question_id=question.id,
+            question_text=question.question_text,
+            user_answer=request.answer,
+            correct_answer=question.correct_answer,
+            is_correct=1 if is_correct else 0,
+            time_spent_seconds=request.time_spent
+        )
+        db.add(attempt)
+
+        # 更新 progress 统计
+        all_attempts_result = await db.execute(
+            select(QuizAttempt).where(QuizAttempt.progress_id == progress.id)
+        )
+        all_attempts = all_attempts_result.scalars().all()
+
+        total_attempts = len(all_attempts) + 1
+        correct_attempts = sum(1 for a in all_attempts if a.is_correct == 1) + (1 if is_correct else 0)
+        progress.quiz_attempts = total_attempts
+        progress.quiz_success_rate = correct_attempts / total_attempts if total_attempts > 0 else 0.0
+
+        await db.commit()
+        logger.info(f"✓ 已保存答题记录: question_id={question_id}, is_correct={is_correct}, time={request.time_spent}s")
+    except Exception as e:
+        logger.error(f"保存答题记录失败: {e}")
+        await db.rollback()
+        # 不中断流程，继续返回反馈
 
     # 生成反馈
     if is_correct:
@@ -1008,7 +1082,7 @@ async def submit_session_answer(
         "correct_answer": question.correct_answer,
         "explanation": question.explanation,
         "feedback": feedback,
-        "question_number": session.current_question_index + 1
+        "question_number": session.current_question_index
     }
 
 

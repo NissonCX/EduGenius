@@ -1,24 +1,15 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getApiUrl } from '@/lib/config';
+import { submitSessionAnswer, completeQuizSession } from '@/lib/quiz-api';
+import type { Question, CompleteSessionResponse } from '@/lib/quiz-api';
 
 // Types
-interface Question {
-  id: number;
-  question_type: string;
-  question_text: string;
-  options?: { [key: string]: string };
-  correct_answer: string;
-  explanation?: string;
-  difficulty: number;
-  competency_dimension?: string;
-}
-
 interface QuizProps {
   questions: Question[];
-  onComplete: (results: QuizResults) => void;
+  sessionId: string;
+  onComplete: (results: CompleteSessionResponse) => void;
   documentId?: number;
   chapterNumber?: number;
   userId?: number;
@@ -26,35 +17,44 @@ interface QuizProps {
   onCompetencyUpdate?: (competencyData: any) => void;
 }
 
-interface QuizResults {
-  total: number;
-  correct: number;
-  score: number;
-  answers: { questionId: number; userAnswer: string; isCorrect: boolean }[];
-}
-
 // 自定义比较函数，优化 Quiz 组件重渲染
 function arePropsEqual(prevProps: QuizProps, nextProps: QuizProps) {
   return (
     prevProps.questions.length === nextProps.questions.length &&
     prevProps.questions.every((q, i) => q.id === nextProps.questions[i].id) &&
+    prevProps.sessionId === nextProps.sessionId &&
     prevProps.documentId === nextProps.documentId &&
     prevProps.chapterNumber === nextProps.chapterNumber
   )
 }
 
-export default React.memo(function Quiz({ questions, onComplete, documentId, chapterNumber, userId, token, onCompetencyUpdate }: QuizProps) {
+export default React.memo(function Quiz({
+  questions,
+  sessionId,
+  onComplete,
+  documentId,
+  chapterNumber,
+  userId,
+  token,
+  onCompetencyUpdate
+}: QuizProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<string>('');
-  const [userAnswers, setUserAnswers] = useState<{ questionId: number; userAnswer: string }[]>([]);
   const [showResult, setShowResult] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [startTime] = useState(Date.now());
   const [feedback, setFeedback] = useState<{ isCorrect: boolean; message: string; explanation?: string } | null>(null);
+
+  // 修复：每题独立计时，而不是整个测试共用一个开始时间
+  const questionStartTimeRef = useRef<number>(Date.now());
 
   const currentQuestion = questions[currentIndex];
   const isLastQuestion = currentIndex === questions.length - 1;
   const progress = ((currentIndex + 1) / questions.length) * 100;
+
+  // 当切换到新题目时，重置开始时间
+  useEffect(() => {
+    questionStartTimeRef.current = Date.now();
+  }, [currentIndex]);
 
   // Handle answer selection
   const handleSelectAnswer = (answer: string) => {
@@ -64,78 +64,45 @@ export default React.memo(function Quiz({ questions, onComplete, documentId, cha
 
   // Submit current answer
   const handleSubmitAnswer = async () => {
-    if (!selectedAnswer) return;
+    if (!selectedAnswer || !sessionId) return;
 
     setIsSubmitting(true);
 
-    // Call API to submit answer
-    try {
-      if (token && userId) {
-        const timeSpent = Math.floor((Date.now() - startTime) / 1000);
-        const response = await fetch(getApiUrl('/api/quiz/submit'), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            user_id: userId,
-            question_id: currentQuestion.id,
-            user_answer: selectedAnswer,
-            time_spent_seconds: timeSpent
-          })
-        });
+    // 计算本题用时（从开始显示当前题目到现在）
+    const timeSpent = Math.floor((Date.now() - questionStartTimeRef.current) / 1000);
 
-        if (response.ok) {
-          const data = await response.json();
-          setFeedback({
-            isCorrect: data.is_correct,
-            message: data.feedback,
-            explanation: data.explanation
-          });
-        } else {
-          // Fallback to local validation if API fails
-          const isCorrect = selectedAnswer.toUpperCase() === currentQuestion.correct_answer.toUpperCase();
-          setFeedback({
-            isCorrect,
-            message: isCorrect ? '✅ 回答正确！' : `❌ 回答错误。正确答案是：${currentQuestion.correct_answer}`,
-            explanation: currentQuestion.explanation
-          });
-        }
-      } else {
-        // No auth - use local validation only
-        const isCorrect = selectedAnswer.toUpperCase() === currentQuestion.correct_answer.toUpperCase();
-        setFeedback({
-          isCorrect,
-          message: isCorrect ? '✅ 回答正确！' : `❌ 回答错误。正确答案是：${currentQuestion.correct_answer}`,
-          explanation: currentQuestion.explanation
-        });
-      }
+    try {
+      // 使用 session API 提交答案
+      const response = await submitSessionAnswer({
+        sessionId: sessionId,
+        questionId: currentQuestion.id,
+        answer: selectedAnswer,
+        timeSpent: timeSpent
+      });
+
+      setFeedback({
+        isCorrect: response.is_correct,
+        message: response.feedback,
+        explanation: response.explanation
+      });
     } catch (error) {
       console.error('Failed to submit answer:', error);
-      // Fallback to local validation on error
-      const isCorrect = selectedAnswer.toUpperCase() === currentQuestion.correct_answer.toUpperCase();
+      // 显示错误提示
       setFeedback({
-        isCorrect,
-        message: isCorrect ? '✅ 回答正确！' : `❌ 回答错误。正确答案是：${currentQuestion.correct_answer}`,
-        explanation: currentQuestion.explanation
+        isCorrect: false,
+        message: '提交失败，请重试',
+        explanation: error instanceof Error ? error.message : '网络错误'
       });
     }
-
-    // Save answer
-    setUserAnswers(prev => [
-      ...prev,
-      { questionId: currentQuestion.id, userAnswer: selectedAnswer }
-    ]);
 
     setIsSubmitting(false);
   };
 
-  // Next question
-  const handleNext = () => {
+  // Next question or complete quiz
+  const handleNext = async () => {
     if (isLastQuestion) {
-      // Quiz complete
-      handleSubmitQuiz();
+      // 完成测试，获取完整分析
+      await handleCompleteQuiz();
     } else {
       setCurrentIndex(prev => prev + 1);
       setSelectedAnswer('');
@@ -143,50 +110,30 @@ export default React.memo(function Quiz({ questions, onComplete, documentId, cha
     }
   };
 
-  // Submit entire quiz
-  const handleSubmitQuiz = async () => {
-    const correctCount = userAnswers.reduce((count, answer) => {
-      const question = questions.find(q => q.id === answer.questionId);
-      if (!question) return count;
-      return count + (answer.userAnswer.toUpperCase() === question.correct_answer.toUpperCase() ? 1 : 0);
-    }, 0);
+  // Complete quiz and get full analysis
+  const handleCompleteQuiz = async () => {
+    if (!sessionId) return;
 
-    const results: QuizResults = {
-      total: questions.length,
-      correct: correctCount,
-      score: (correctCount / questions.length) * 100,
-      answers: userAnswers.map(answer => {
-        const question = questions.find(q => q.id === answer.questionId);
-        return {
-          questionId: answer.questionId,
-          userAnswer: answer.userAnswer,
-          isCorrect: question ? answer.userAnswer.toUpperCase() === question.correct_answer.toUpperCase() : false
-        };
-      })
-    };
+    setIsSubmitting(true);
 
-    // 刷新能力数据
-    if (userId && token && onCompetencyUpdate) {
-      try {
-        const response = await fetch(getApiUrl(`/api/users/${userId}/history`), {
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          }
-        });
+    try {
+      // 调用后端获取完整分析
+      const results = await completeQuizSession(sessionId);
 
-        if (response.ok) {
-          const data = await response.json();
-          if (data.competency_scores) {
-            onCompetencyUpdate(data.competency_scores);
-          }
-        }
-      } catch (error) {
-        console.error('Failed to refresh competency data:', error);
+      // 触发能力数据更新
+      if (onCompetencyUpdate && results.competency_analysis) {
+        onCompetencyUpdate(results.competency_analysis);
       }
+
+      // 传递完整结果给父组件
+      onComplete(results);
+    } catch (error) {
+      console.error('Failed to complete quiz:', error);
+      // 如果失败，仍然显示结果但提示错误
+      alert('获取测试结果失败，请刷新页面重试');
     }
 
-    onComplete(results);
+    setIsSubmitting(false);
   };
 
   if (questions.length === 0) {
@@ -318,9 +265,10 @@ export default React.memo(function Quiz({ questions, onComplete, documentId, cha
             ) : (
               <button
                 onClick={handleNext}
-                className="ml-auto px-6 py-3 bg-black text-white rounded-lg font-medium hover:bg-gray-800 transition-colors"
+                disabled={isSubmitting}
+                className="ml-auto px-6 py-3 bg-black text-white rounded-lg font-medium hover:bg-gray-800 transition-colors disabled:opacity-50"
               >
-                {isLastQuestion ? '查看结果' : '下一题'}
+                {isSubmitting ? '处理中...' : isLastQuestion ? '查看结果' : '下一题'}
               </button>
             )}
           </div>
